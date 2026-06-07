@@ -1,0 +1,9 @@
+# Dependencias Python para el pipeline de análisis
+# SMA Quito — UCE Sistemas Colaborativos 2026
+#
+# Instalar con: pip install -r requirements.txt
+
+pandas==2.2.2
+numpy==1.26.4
+matplotlib==3.9.0
+scipy==1.13.1

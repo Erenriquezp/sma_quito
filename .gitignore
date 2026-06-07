@@ -1,0 +1,60 @@
+# ── Python ────────────────────────────────────────────────────────────────
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+*.egg
+*.egg-info/
+dist/
+build/
+.eggs/
+.venv/
+venv/
+env/
+.env
+
+# ── Jupyter ───────────────────────────────────────────────────────────────
+.ipynb_checkpoints/
+*.ipynb
+
+# ── Análisis — salidas generadas (no versionar) ───────────────────────────
+analysis/results/*.csv
+analysis/figures/*.png
+analysis/figures/*.pdf
+
+# ── GAMA Platform ─────────────────────────────────────────────────────────
+# Archivos internos del workspace de Eclipse/GAMA
+gama/.settings/
+gama/snapshots/
+gama/**/*.bak
+gama/**/*.log
+*.gaml.bak
+
+# ── Outputs de simulación ─────────────────────────────────────────────────
+# Incluir los CSV de ejemplo (run1) pero ignorar ejecuciones adicionales
+gama/outputs/*_run[2-9]_*.csv
+gama/outputs/*_run[1-9][0-9]_*.csv
+
+# ── Sistema operativo ─────────────────────────────────────────────────────
+.DS_Store
+Thumbs.db
+desktop.ini
+*.tmp
+*.swp
+*~
+
+# ── IDEs ──────────────────────────────────────────────────────────────────
+.idea/
+.vscode/
+*.code-workspace
+
+# ── LaTeX / Overleaf ──────────────────────────────────────────────────────
+*.aux
+*.log
+*.out
+*.toc
+*.bbl
+*.blg
+*.fls
+*.fdb_latexmk
+*.synctex.gz
