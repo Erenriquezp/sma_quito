@@ -74,7 +74,7 @@ sma_quito/
 ### 1. Clonar el repositorio
 
 ```bash
-git clone https://github.com/<tu-usuario>/sma_quito.git
+git clone https://github.com/Erenriquezp/sma_quito.git
 cd sma_quito
 ```
 
