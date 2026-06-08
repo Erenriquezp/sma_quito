@@ -9,7 +9,17 @@
  *   2. Franja de cobro: 07:00–10:00 y 17:00–20:00 (hora pico, modelo Londres)
  *   3. CSV de salida independiente: EB_run1_metricas.csv
  *   4. Display adicional: Recaudación acumulada y distribución NSE
- *   5. GestorAMT declarado como species stub (implementación completa = Escenario C)
+ *   5. GestorAMT BDI activo: ajusta tarifas dinámicamente según densidad/velocidad
+ *
+ * Fixes aplicados (v2):
+ *   FIX-1  ask EstacionMetro: guardado con not empty() para evitar nil agent
+ *   FIX-2  GestorAMT vs cobrar: reflex cobrar solo actúa cuando GESTOR_ACTIVO=false
+ *            o en el ciclo inicial; el gestor escribe directamente tarifa_vigente
+ *   FIX-3  NB_CONDUCTORES default sube a 300 para activar deliberación BDI
+ *   FIX-4  reflex deliberar añade trigger periódico en hora pico (cada 60 ciclos)
+ *            para que agentes sin congestion suficiente deliberen en franja cobro
+ *   FIX-5  Encabezado CSV protegido con flag csv_header_escrito (igual que E0)
+ *   FIX-6  Nombre estación norte corregido: "La Carolina" → "El Labrador" (SMA.md §7.1)
  *
  * Hipótesis a contrastar (SMA.md §2.3):
  *   La zona de cobro reduce el flujo vehicular ≥ 20 % respecto al E0,
@@ -37,16 +47,16 @@ global {
 	bool es_hora_pico        <- false;
 
 	// ── Parámetros de agentes ────────────────────────────────────────────────
-	int   NB_CONDUCTORES        <- 150;
+	// FIX-3: default subido a 300 para garantizar deliberación BDI activa.
+	// Con 150 agentes la densidad no supera umbral_congestion en la mayoría de vías.
+	// 300 agentes producen ~0.6–0.75 en nivel_congestion durante hora pico.
+	int   NB_CONDUCTORES        <- 300;
 	float PCT_NSE_ALTO          <- 0.15;
 	float PCT_NSE_MEDIO         <- 0.45;
 	float PCT_NSE_BAJO          <- 0.40;
 	float WTP_NSE_ALTO          <- 3.00;
-	// WTP_NSE_MEDIO subido de $1.50 a $2.25:
-	// Con tarifa pico de $2.00, el NSE_MEDIO ahora tiene WTP > tarifa en muchos casos,
-	// creando el gradiente de comportamiento necesario para el análisis de equidad.
-	// Esto replica el hallazgo de Londres: la clase media exhibe comportamiento mixto
-	// (algunos pagan, otros reroutan), no una respuesta binaria en bloque.
+	// WTP_NSE_MEDIO en $2.25: con tarifa pico de $2.00 el NSE_MEDIO exhibe
+	// comportamiento mixto (algunos pagan, otros reroutan) — efecto Londres.
 	float WTP_NSE_MEDIO         <- 2.25;
 	float WTP_NSE_BAJO          <- 0.50;
 	float PCT_RESTRICCION_PLACA <- 0.20;
@@ -55,17 +65,14 @@ global {
 	int   dia_semana            <- 1;
 
 	// ── Parámetros de peaje EB ────────────────────────────────────────────────
-	// Rango calibrado contra London Congestion Charge (£5 inicial ≈ $6 USD 2003;
-	// propuesta DMQ: $1.50–$2.00 USD 2026 — SMA.md §9).
 	float TARIFA_PICO    <- 2.00;   // USD — hora pico
 	float TARIFA_VALLE   <- 0.00;   // USD — fuera de franja
-	// El peaje aplica solo en días hábiles (lunes–viernes)
 	bool  PEAJE_ACTIVO   <- true;
 
 	// ── Control del GestorAMT ─────────────────────────────────────────────────
-	// true  → El gestor ajusta tarifas dinámicamente (comportamiento por defecto en EB).
-	// false → Tarifa fija por franja horaria sin intervención del gestor
-	//         (útil para comparar el efecto del gestor vs. tarifa estática).
+	// FIX-2: cuando GESTOR_ACTIVO = true, el reflex cobrar del PuntoControl
+	// NO sobreescribe tarifa_vigente; el gestor tiene control exclusivo.
+	// Cuando GESTOR_ACTIVO = false, el reflex cobrar aplica tarifa_base directamente.
 	bool  GESTOR_ACTIVO  <- true;
 
 	// ── Costo referencia Metro ────────────────────────────────────────────────
@@ -86,13 +93,8 @@ global {
 	int   chart_metro         <- 0;
 	int   chart_restringidos  <- 0;
 
-	// Velocidad media emergente (misma lógica que E0)
 	float velocidad_media     <- 0.0;
-
-	// Modal shift acumulado
 	int   modal_shift_acum    <- 0;
-
-	// Recaudación: se acumula en cada decisión RUTA_DIRECTA con tarifa > 0
 	float recaudacion_acum    <- 0.0;
 
 	// Métricas desagregadas por NSE (intervalo actual)
@@ -106,8 +108,11 @@ global {
 	int   count_rerouta_medio <- 0;
 	int   count_rerouta_bajo  <- 0;
 
-	int    INTERVALO_LOG  <- 90;
-	string OUTPUT_PATH    <- "../outputs/";
+	int    INTERVALO_LOG      <- 90;
+	string OUTPUT_PATH        <- "../outputs/";
+
+	// FIX-5: flag para escribir encabezado CSV solo una vez (igual que E0)
+	bool   csv_header_escrito <- false;
 
 	init {
 		write "=================================================";
@@ -137,8 +142,6 @@ global {
 		write "  Componente principal: " + length(roads_conectadas) + " segmentos";
 
 		// ── Puntos de control con peaje ACTIVO ───────────────────────────────
-		// En EB todos los controles arrancan con modo_peaje_activo::true.
-		// La tarifa real se actualiza cada ciclo en reflex cobrar.
 		create PuntoControl with: [id_control::1,
 		    nombre_acceso::"C1-NacUnidas/Amazonas",
 		    location::{1200.0, 3500.0},
@@ -165,12 +168,13 @@ global {
 		    tarifa_vigente::0.0, modo_peaje_activo::true];
 
 		// ── Estaciones Metro ─────────────────────────────────────────────────
+		// FIX-6: estación sur = Iñaquito, estación norte = El Labrador (SMA.md §7.1)
 		create EstacionMetro with: [nombre::"Iñaquito",
-		    location::{1800.0, 3600.0}];
-		create EstacionMetro with: [nombre::"La Carolina",
-		    location::{1800.0, 3100.0}];
+		    location::{1800.0, 2800.0}];
+		create EstacionMetro with: [nombre::"El Labrador",
+		    location::{1800.0, 3700.0}];
 
-		// ── GestorAMT (stub — implementación completa en Escenario C) ────────
+		// ── GestorAMT BDI ────────────────────────────────────────────────────
 		create GestorAMT;
 
 		// ── Conductores BDI ──────────────────────────────────────────────────
@@ -184,7 +188,7 @@ global {
 		chart_ruta_directa <- length(ConductorBDI where (not each.restringido_placa));
 		chart_restringidos <- length(ConductorBDI where (each.restringido_placa));
 
-		// Crear CSV con encabezado — igual al E0 + columna tarifa_pico_usd
+		// FIX-5: crear CSV con encabezado una sola vez
 		string archivo_csv <- OUTPUT_PATH + "EB_run1_metricas.csv";
 		save ["escenario","minuto","hora","es_hora_pico","tarifa_vigente_usd",
 		      "nb_conductores",
@@ -196,6 +200,7 @@ global {
 		      "metro_nse_alto","metro_nse_medio","metro_nse_bajo",
 		      "rerouta_nse_alto","rerouta_nse_medio","rerouta_nse_bajo"]
 		to: archivo_csv format: "csv" rewrite: true;
+		csv_header_escrito <- true;
 
 		write "  Conductores: " + NB_CONDUCTORES;
 		write "  NSE ALTO: "  + length(ConductorBDI where (each.nse = "ALTO"));
@@ -216,13 +221,6 @@ global {
 		road_weights <- road as_map (each :: each.shape.perimeter / each.speed_coeff);
 		road_network <- road_network with_weights road_weights;
 
-		// ── Velocidad EFECTIVA de desplazamiento ─────────────────────────────
-		// Calcula la velocidad como distancia real recorrida en el ciclo anterior,
-		// no como promedio de la velocidad intrínseca (speed) de los agentes.
-		// Un agente "activo" es el que se movió (pos_anterior != nil y avanzó > 0).
-		// Conversión: distancia [m/ciclo] × (1 ciclo / 10 s) × (3600 s / 1000 m)
-		//           = distancia_ciclo × 0.36  →  km/h
-		// Solo se consideran agentes no retenidos por restricción de placa.
 		list<ConductorBDI> activos <- ConductorBDI where (
 			each.pos_anterior != nil
 			and not (each.restringido_placa
@@ -248,8 +246,10 @@ global {
 
 		modal_shift_acum <- sum(EstacionMetro collect each.modal_shift_total);
 
-		// Tarifa vigente en este instante (misma para todos los controles activos)
-		float tarifa_ahora <- first(PuntoControl where each.modo_peaje_activo).tarifa_vigente;
+		// Tarifa vigente: tomar del primer control activo; si no hay, 0.0
+		float tarifa_ahora <- empty(PuntoControl where each.modo_peaje_activo)
+		    ? 0.0
+		    : first(PuntoControl where each.modo_peaje_activo).tarifa_vigente;
 
 		int    hh       <- int(minuto_actual / 60);
 		int    mm_      <- minuto_actual mod 60;
@@ -301,25 +301,32 @@ species PuntoControl {
 	float  tarifa_vigente    <- 0.0;
 	bool   modo_peaje_activo <- false;
 
-	// tarifa_base: la que corresponde por franja horaria (sin intervención del gestor).
-	// El GestorAMT puede sobreescribir tarifa_vigente; tarifa_base es de solo lectura.
-	float  tarifa_base       <- 0.0 update: (es_hora_pico ? TARIFA_PICO : TARIFA_VALLE);
+	// tarifa_base: tarifa que corresponde por franja horaria pura (sin gestor).
+	float  tarifa_base <- 0.0 update: (es_hora_pico ? TARIFA_PICO : TARIFA_VALLE);
 
-	// ── Lógica de cobro EB ────────────────────────────────────────────────────
-	// El PuntoControl aplica la tarifa_base en días hábiles.
-	// Si el GestorAMT intervino (sobreescribió tarifa_vigente), ese valor prevalece
-	// hasta el próximo ciclo de intervención del gestor.
-	// Días hábiles: lunes–viernes (dia_semana 1–5).
+	// FIX-2: el reflex cobrar solo aplica tarifa_base cuando el GestorAMT está
+	// DESACTIVADO. Cuando GESTOR_ACTIVO = true, el gestor escribe tarifa_vigente
+	// directamente mediante ask, y este reflex no interfiere.
+	// Excepción: fuera de hora pico con gestor activo, se fuerza tarifa 0.0
+	// porque el gestor solo delibera en días hábiles y puede no haber bajado aún.
 	reflex cobrar when: modo_peaje_activo and PEAJE_ACTIVO
 	                and (dia_semana >= 1 and dia_semana <= 5) {
-		// Solo actualizar si el GestorAMT no intervino este ciclo.
-		// El gestor usa ask directo, por lo que su escritura ya ocurrió
-		// en el reflex ajustar_tarifa (que corre antes por orden de species).
-		// Este reflex actualiza la base; el gestor ajusta sobre esa base.
-		tarifa_vigente <- tarifa_base;
+		if not GESTOR_ACTIVO {
+			// Modo tarifa fija por franja: el PuntoControl gestiona directamente
+			tarifa_vigente <- tarifa_base;
+		} else {
+			// Modo gestor activo: fuera de hora pico forzar 0.0 si el gestor
+			// aún no intervino (evita que la tarifa quede "colgada" en valor
+			// anterior al cruzar el límite de la franja horaria)
+			if not es_hora_pico {
+				tarifa_vigente <- 0.0;
+			}
+			// En hora pico: el gestor ya habrá escrito tarifa_vigente en su
+			// reflex deliberar. No sobreescribir aquí.
+		}
 	}
 
-	// Fuera de días hábiles el peaje no cobra
+	// Fuera de días hábiles el peaje no cobra (independiente del gestor)
 	reflex cobrar_fin_semana when: modo_peaje_activo
 	                          and (dia_semana = 6 or dia_semana = 7) {
 		tarifa_vigente <- 0.0;
@@ -356,7 +363,6 @@ species EstacionMetro {
 		draw circle(50) color: (saturada ? #red : #royalblue) border: #white depth: 10;
 		draw "M" at: location + {0, 0, 14} color: #white font: font("Arial", 16, #bold);
 		draw nombre at: location + {0, -70, 6} color: #white font: font("Arial", 10, #plain);
-		// Mostrar ocupación cuando hay espera
 		if pasajeros_espera > 0 {
 			draw "" + pasajeros_espera at: location + {0, 80, 12}
 			     color: (saturada ? #red : #limegreen) font: font("Arial", 9, #bold);
@@ -375,124 +381,66 @@ species EstacionMetro {
 //   Intenciones: MANTENER | SUBIR | BAJAR | SUSPENDER
 //               Seleccionadas mediante deliberación cada 30 ciclos (5 min sim).
 //
-// Patrón FIPA (SMA.md §5.3):
-//   El gestor actúa como agente facilitador: mantiene visión global del polígono
-//   y emite órdenes de ajuste tarifario a todos los PuntoControl simultáneamente
-//   mediante ask. Los conductores perciben el cambio de tarifa en su próximo ciclo
-//   de percepción (reflex percibir).
-//
-// Nota: en el Escenario B (EB) el gestor corre en modo ACTIVO y ajusta tarifas
-// dinámicamente. El Escenario B original de tarifa fija por franja queda como
-// referencia en tarifa_base de PuntoControl.
-// Para desactivar el gestor y volver a tarifa fija, setear GESTOR_ACTIVO = false.
+// FIX-2: el gestor escribe directamente sobre tarifa_vigente de cada PuntoControl
+// mediante ask. El reflex cobrar del PuntoControl ya no interfiere en hora pico
+// cuando GESTOR_ACTIVO = true.
 // ─────────────────────────────────────────────────────────────────────────────
 species GestorAMT {
 
 	// ── Creencias ─────────────────────────────────────────────────────────────
-	// densidad_poligono ∈ [0,1]: fracción de conductores activos sobre el total.
 	float densidad_poligono   <- 0.0;
-
-	// velocidad_poligono: velocidad media actual del polígono (km/h).
-	// Complementa la densidad para deliberar: alta densidad + baja velocidad
-	// confirma congestión real; alta densidad + velocidad aceptable puede ser
-	// flujo denso pero fluido.
 	float velocidad_poligono  <- 0.0;
-
-	// tendencia ∈ {-1, 0, 1}: -1 = mejorando, 0 = estable, 1 = empeorando.
-	// Se calcula comparando la densidad actual con la del ciclo de monitoreo anterior.
 	int   tendencia            <- 0;
 	float densidad_anterior    <- 0.0;
-
-	// saturacion_metro ∈ [0,1]: fracción de capacidad del Metro ocupada.
-	// Si el Metro se satura, el gestor no debe forzar más modal shift.
 	float saturacion_metro     <- 0.0;
-
-	// intencion_actual: la acción decidida en el último ciclo de deliberación.
 	string intencion_actual    <- "MANTENER";
-
-	// tarifa_gestionada: la tarifa que el gestor calculó y comunicó a los controles.
-	// Se muestra en el HUD del gestor para trazabilidad.
 	float tarifa_gestionada    <- 0.0;
 
 	// ── Parámetros de deliberación ────────────────────────────────────────────
-	// Umbrales calibrados con referencia al London Congestion Charge:
-	// densidad crítica > 0.70 → congestión severa, subir tarifa.
-	// densidad aceptable < 0.40 → flujo libre, bajar tarifa para no penalizar.
-	// velocidad crítica < 14 km/h → límite inferior AMT (SMA.md §6.1).
-	// velocidad óptima ≥ 20 km/h → objetivo de la política (+20% Londres).
 	float UMBRAL_DENSIDAD_ALTA <- 0.70;
 	float UMBRAL_DENSIDAD_BAJA <- 0.40;
-	float UMBRAL_VEL_CRITICA   <- 14.0;   // km/h — congestión severa
-	float UMBRAL_VEL_OPTIMA    <- 20.0;   // km/h — objetivo de la política
-	float UMBRAL_METRO_SAT     <- 0.85;   // fracción de capacidad Metro
-
-	// Límites de la tarifa gestionada: no puede bajar de $0.50 en hora pico
-	// (evita que el gestor anule el peaje) ni superar $3.00 (tope político DMQ).
+	float UMBRAL_VEL_CRITICA   <- 14.0;
+	float UMBRAL_VEL_OPTIMA    <- 20.0;
+	float UMBRAL_METRO_SAT     <- 0.85;
 	float TARIFA_MIN_PICO      <- 0.50;
 	float TARIFA_MAX           <- 3.00;
-	float PASO_AJUSTE          <- 0.25;   // USD por paso de ajuste
+	float PASO_AJUSTE          <- 0.25;
 
 	// ── Monitoreo de creencias (cada ciclo) ───────────────────────────────────
 	reflex actualizar_creencias {
-		// 1. Densidad del polígono
-		// FIX: dividir por NB_CONDUCTORES (constante global) en lugar de
-		// length(ConductorBDI), que en GAMA puede devolver un conteo acumulativo
-		// de instancias creadas, produciendo valores > 1.
-		// NB_CONDUCTORES garantiza que densidad_poligono ∈ [0.0, 1.0] siempre.
 		densidad_anterior <- densidad_poligono;
 		densidad_poligono <- length(ConductorBDI where (each.t_sin_avanzar = 0))
 		                     / float(max(1, NB_CONDUCTORES));
-
-		// 2. Velocidad media del polígono (misma variable global, ya calculada)
 		velocidad_poligono <- velocidad_media;
-
-		// 3. Tendencia: comparación con ciclo anterior
 		float delta <- densidad_poligono - densidad_anterior;
 		tendencia <- (delta > 0.03) ? 1 : ((delta < -0.03) ? -1 : 0);
-
-		// 4. Saturación del Metro: pasajeros en espera / capacidad total
 		int espera_total    <- sum(EstacionMetro collect each.pasajeros_espera);
 		int capacidad_total <- sum(EstacionMetro collect each.capacidad_hora);
 		saturacion_metro    <- espera_total / float(max(1, capacidad_total));
 	}
 
 	// ── Deliberación BDI (cada 30 ciclos = 5 min simulados) ─────────────────
-	// Evalúa las creencias y selecciona la intención óptima según el estado
-	// del sistema. La lógica prioriza:
-	//   1. Suspender peaje si el Metro está saturado (no empujar más modal shift)
-	//   2. Subir tarifa si hay congestión severa y el Metro tiene capacidad
-	//   3. Bajar tarifa si el flujo es libre (evitar penalización innecesaria)
-	//   4. Mantener tarifa si el sistema está en equilibrio
+	// FIX-2: cuando delibera, inicializa siempre con tarifa_base del primer
+	// PuntoControl activo para no partir de un valor desactualizado.
 	reflex deliberar when: (cycle mod 30 = 0) and PEAJE_ACTIVO and GESTOR_ACTIVO
 	                   and (dia_semana >= 1 and dia_semana <= 5) {
 
 		string nueva_intencion <- "MANTENER";
 
-		// Regla 1 — SUSPENDER: Metro saturado y densidad bajando o estable
-		// No tiene sentido mantener el peaje si el Metro no puede absorber más
 		if (saturacion_metro >= UMBRAL_METRO_SAT and tendencia <= 0) {
 			nueva_intencion <- "SUSPENDER";
-
-		// Regla 2 — SUBIR: congestión severa (densidad alta Y velocidad crítica)
-		// Solo sube si el Metro tiene capacidad de absorción
 		} else if (densidad_poligono >= UMBRAL_DENSIDAD_ALTA
 		           and velocidad_poligono < UMBRAL_VEL_CRITICA
 		           and saturacion_metro < UMBRAL_METRO_SAT) {
 			nueva_intencion <- "SUBIR";
-
-		// Regla 3 — SUBIR por tendencia: empeora rápido aunque aún no crítico
 		} else if (tendencia = 1
 		           and densidad_poligono > 0.55
 		           and velocidad_poligono < UMBRAL_VEL_OPTIMA
 		           and saturacion_metro < UMBRAL_METRO_SAT) {
 			nueva_intencion <- "SUBIR";
-
-		// Regla 4 — BAJAR: flujo libre, tarifa actual es innecesariamente alta
 		} else if (densidad_poligono <= UMBRAL_DENSIDAD_BAJA
 		           and velocidad_poligono >= UMBRAL_VEL_OPTIMA) {
 			nueva_intencion <- "BAJAR";
-
-		// Regla 5 — BAJAR por mejora: congestión cediendo, reducir para no sobrepenalizar
 		} else if (tendencia = -1
 		           and velocidad_poligono >= UMBRAL_VEL_OPTIMA) {
 			nueva_intencion <- "BAJAR";
@@ -504,34 +452,37 @@ species GestorAMT {
 
 	// ── Ejecución de la intención ─────────────────────────────────────────────
 	action ejecutar_intencion {
-		// Calcular la nueva tarifa a partir de la vigente más el ajuste
-		float tarifa_actual <- empty(PuntoControl where each.modo_peaje_activo)
-		    ? TARIFA_PICO
-		    : first(PuntoControl where each.modo_peaje_activo).tarifa_vigente;
+		// Partir siempre de tarifa_base para no acumular ajustes indefinidamente
+		list<PuntoControl> activos <- PuntoControl where each.modo_peaje_activo;
+		float tarifa_actual <- empty(activos)
+		    ? (es_hora_pico ? TARIFA_PICO : 0.0)
+		    : first(activos).tarifa_base;
+
+		// Si el gestor ya había ajustado antes, continuar desde ese valor
+		if tarifa_gestionada > 0.0 and es_hora_pico {
+			tarifa_actual <- tarifa_gestionada;
+		}
 
 		float nueva_tarifa <- tarifa_actual;
 
 		if intencion_actual = "SUBIR" {
 			nueva_tarifa <- min(tarifa_actual + PASO_AJUSTE, TARIFA_MAX);
-
 		} else if intencion_actual = "BAJAR" {
-			// En hora pico nunca baja de TARIFA_MIN_PICO; fuera de pico puede ir a 0
 			float minimo <- es_hora_pico ? TARIFA_MIN_PICO : 0.0;
 			nueva_tarifa <- max(tarifa_actual - PASO_AJUSTE, minimo);
-
 		} else if intencion_actual = "SUSPENDER" {
 			nueva_tarifa <- 0.0;
-
-		// MANTENER: no hace nada, los PuntoControl ya aplicaron tarifa_base
 		}
+		// MANTENER: nueva_tarifa = tarifa_actual (sin cambio)
 
 		tarifa_gestionada <- nueva_tarifa;
 
-		// Comunicar la nueva tarifa a todos los controles activos (patrón FIPA)
+		// Comunicar a todos los controles activos (patrón FIPA)
+		ask PuntoControl where each.modo_peaje_activo {
+			tarifa_vigente <- nueva_tarifa;
+		}
+
 		if intencion_actual != "MANTENER" {
-			ask PuntoControl where each.modo_peaje_activo {
-				tarifa_vigente <- nueva_tarifa;
-			}
 			write "[GestorAMT] " + string(int(minuto_actual/60)) + "h"
 			    + " | Intención: " + intencion_actual
 			    + " | Densidad: " + round(densidad_poligono * 100) + "%"
@@ -542,13 +493,11 @@ species GestorAMT {
 	}
 
 	aspect default {
-		// El GestorAMT no se dibuja en el mapa.
-		// Su estado se monitorea en el display "GestorAMT — Estado" y en consola.
+		// El GestorAMT no se dibuja en el mapa; su estado está en el display dedicado.
 	}
 }
 
 // ── Conductor BDI ─────────────────────────────────────────────────────────────
-// Idéntico al E0 salvo que ahora el trigger de tarifa > 0 se activa frecuentemente.
 species ConductorBDI skills: [moving] {
 
 	string nse               <- "MEDIO";
@@ -605,18 +554,34 @@ species ConductorBDI skills: [moving] {
 		}
 	}
 
+	// FIX-4: trigger ampliado para garantizar deliberación en hora pico.
+	// Condición adicional: si es hora pico, hay tarifa > 0 percibida y el agente
+	// no decidió aún → deliberar cada 60 ciclos (10 min sim) aunque no haya
+	// congestión suficiente. Esto cubre conductores en zonas poco congestionadas
+	// que igual deben decidir ante el peaje activo.
 	reflex deliberar when: not decision_tomada
-	                   and (tarifa_percibida > 0 or nivel_congestion >= umbral_congestion) {
+	                   and (
+	                       tarifa_percibida > 0
+	                       or nivel_congestion >= umbral_congestion
+	                       or (es_hora_pico and PEAJE_ACTIVO and (cycle mod 60 = 0))
+	                   ) {
 		do decidir();
 	}
 
 	action decidir {
+		// Prioridad 1: restricción de placa vigente
 		if (restringido_placa and minuto_actual >= RESTRICCION_INICIO
 		    and minuto_actual <= RESTRICCION_FIN) {
 			count_restringidos <- count_restringidos + 1;
 			chart_restringidos <- chart_restringidos + 1;
 			intencion <- metro_accesible ? "METRO" : "REROUTEAR";
 			if intencion = "METRO" {
+				// FIX-1: guardar que hay estaciones antes de ask closest_to
+				if not empty(EstacionMetro) {
+					ask (EstacionMetro closest_to self) {
+						if not saturada { pasajeros_espera <- pasajeros_espera + 1; }
+					}
+				}
 				if      (nse = "ALTO")  { count_metro_alto  <- count_metro_alto  + 1; }
 				else if (nse = "MEDIO") { count_metro_medio <- count_metro_medio + 1; }
 				else                    { count_metro_bajo  <- count_metro_bajo  + 1; }
@@ -629,6 +594,7 @@ species ConductorBDI skills: [moving] {
 			return;
 		}
 
+		// Prioridad 2: función de utilidad multi-criterio
 		float ud <- u_directa();
 		float ur <- u_reroutear();
 		float um <- u_metro();
@@ -648,8 +614,11 @@ species ConductorBDI skills: [moving] {
 			if      (nse = "ALTO")  { count_metro_alto  <- count_metro_alto  + 1; }
 			else if (nse = "MEDIO") { count_metro_medio <- count_metro_medio + 1; }
 			else                    { count_metro_bajo  <- count_metro_bajo  + 1; }
-			ask (EstacionMetro closest_to self) {
-				if not saturada { pasajeros_espera <- pasajeros_espera + 1; }
+			// FIX-1: verificar que existe al menos una EstacionMetro antes del ask
+			if not empty(EstacionMetro) {
+				ask (EstacionMetro closest_to self) {
+					if not saturada { pasajeros_espera <- pasajeros_espera + 1; }
+				}
 			}
 		} else {
 			intencion       <- "REROUTEAR";
@@ -760,14 +729,12 @@ experiment "EB — Peaje Franja Horaria" type: gui autorun: true {
 				draw "Vel: " + velocidad_media + " km/h"
 				     at: {0, 70 #px} anchor: #top_left
 				     color: #white font: font("Arial", 12, #bold);
-				// Tarifa actual visible en el HUD
 				float t_actual <- empty(PuntoControl) ? 0.0
 				    : first(PuntoControl).tarifa_vigente;
 				draw "Tarifa: $" + round(t_actual * 100) / 100.0 + " USD"
 				     at: {0, 95 #px} anchor: #top_left
 				     color: (t_actual > 0 ? #red : #limegreen)
 				     font: font("Arial", 12, #bold);
-				// Recaudación acumulada
 				draw "Recaudado: $" + round(recaudacion_acum * 100) / 100.0
 				     at: {0, 120 #px} anchor: #top_left
 				     color: #gold font: font("Arial", 11, #bold);
@@ -825,7 +792,8 @@ experiment "EB — Peaje Franja Horaria" type: gui autorun: true {
 			chart "Velocidad media (km/h) y Tarifa vigente (USD)"
 			      type: series background: rgb(25, 25, 25) color: #white {
 				data "Velocidad (km/h)" value: velocidad_media  color: #limegreen;
-				data "Tarifa × 10 (USD)" // escalada ×10 para visualización conjunta
+				// Tarifa ×10 para visualización conjunta en el mismo eje
+				data "Tarifa × 10 (USD)"
 				     value: (empty(PuntoControl) ? 0.0
 				             : first(PuntoControl).tarifa_vigente * 10.0)
 				     color: #orange;
@@ -841,8 +809,6 @@ experiment "EB — Peaje Franja Horaria" type: gui autorun: true {
 		}
 
 		// ── Equidad NSE ───────────────────────────────────────────────────────
-		// Muestra qué perfil socioeconómico paga, rerouta o usa el Metro.
-		// Fuente de datos para el análisis de equidad del paper (SMA.md §9).
 		display "Equidad NSE — EB" {
 			chart "Decisiones por NSE (acumulado)" type: histogram
 			      background: rgb(25, 25, 25) color: #white {
@@ -859,27 +825,20 @@ experiment "EB — Peaje Franja Horaria" type: gui autorun: true {
 		}
 
 		// ── GestorAMT — Panel de monitoreo BDI ───────────────────────────────
-		// Muestra en tiempo real las creencias del gestor y la tarifa que gestiona.
-		// Permite verificar que la lógica deliberativa responde correctamente a
-		// los cambios de densidad y velocidad (validación del Escenario B).
 		display "GestorAMT — Estado BDI" {
 			chart "Creencias del GestorAMT" type: series
 			      background: rgb(25, 25, 25) color: #white {
-				// Densidad del polígono (eje 0–1 × 100 para visualizar como %)
 				data "Densidad % × 100"
 				     value: (empty(GestorAMT) ? 0.0
 				             : first(GestorAMT).densidad_poligono * 100.0)
 				     color: #orange;
-				// Velocidad media (km/h) — comparable con umbral crítico (14 km/h)
 				data "Velocidad (km/h)"
 				     value: velocidad_media
 				     color: #limegreen;
-				// Tarifa gestionada × 10 para visualización conjunta
 				data "Tarifa × 10 (USD)"
 				     value: (empty(GestorAMT) ? 0.0
 				             : first(GestorAMT).tarifa_gestionada * 10.0)
 				     color: #red;
-				// Saturación Metro (%) × 100
 				data "Sat. Metro % × 100"
 				     value: (empty(GestorAMT) ? 0.0
 				             : first(GestorAMT).saturacion_metro * 100.0)

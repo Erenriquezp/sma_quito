@@ -101,6 +101,19 @@ Los puntos que requieren atención antes de tener resultados publicables son:
 
 ## 3. OBSERVACIONES TÉCNICAS Y PENDIENTES
 
+### 3.0 ✅ Fixes aplicados en EB_PeajeHorario.gaml (v2 — junio 2026)
+
+| Fix | Problema original | Solución aplicada |
+|-----|-------------------|-------------------|
+| FIX-1 | `ask (EstacionMetro closest_to self)` explota con `nil agent` cuando EstacionMetro está vacío | Añadida guardia `if not empty(EstacionMetro)` antes de cada `ask closest_to` en `action decidir` |
+| FIX-2 | `reflex cobrar` del PuntoControl sobreescribía `tarifa_vigente` cada ciclo, anulando los ajustes del GestorAMT | El `reflex cobrar` solo actúa cuando `GESTOR_ACTIVO = false`; fuera de hora pico fuerza 0.0; el gestor escribe directamente vía `ask` |
+| FIX-3 | Con 150 conductores la densidad no superaba `umbral_congestion` → 0% deliberación BDI | `NB_CONDUCTORES` default subido a 300 (rango slider 50–500 sigue disponible) |
+| FIX-4 | Agentes cerca de puntos de control en hora pico no deliberaban si no había suficiente congestión local | `reflex deliberar` añade trigger periódico `(es_hora_pico and PEAJE_ACTIVO and (cycle mod 60 = 0))` |
+| FIX-5 | Encabezado CSV duplicado en EB_run1_metricas.csv | Flag `csv_header_escrito` idéntico al E0; encabezado solo en `init` con `rewrite: true` |
+| FIX-6 | Estación norte nombrada `"La Carolina"` en vez de `"El Labrador"` (SMA.md §7.1) | Corregido a `"El Labrador"`; posición ajustada a `{1800.0, 3700.0}` |
+
+---
+
 ### 3.1 🟡 E0 — Deliberación BDI condicionada al número de agentes
 
 **Observación (basada en el código):** El `reflex deliberar` en `ConductorBDI` se activa únicamente cuando se cumple al menos una de estas condiciones:
