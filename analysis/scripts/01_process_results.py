@@ -8,11 +8,18 @@ limpio y estandarizado, listo para análisis comparativo.
 Uso:
     python 01_process_results.py
 
-Entradas:  ../../gama/outputs/E0_run*_metricas.csv
+Entradas:  ../../gama/outputs/E0_heterogeneo_metricas.csv   ← E0 con tipos
            ../../gama/outputs/EB_run*_metricas.csv
 Salidas:   ../results/E0_processed.csv
            ../results/EB_processed.csv
            ../results/combined.csv
+           ../results/resumen_estadistico.csv
+
+v2 — junio 2026:
+  - E0 ahora lee E0_heterogeneo_metricas.csv con etiqueta "E0_HET"
+  - Rellena con cero recaudacion_acum_usd y nb_restringidos_placa si ausentes
+  - Filtra buses del análisis de equidad NSE (directo_nse_bajo_corr)
+  - Columnas alineadas con el CSV real de GAMA (20 columnas con header)
 
 Autores: Equipo SMA Quito — UCE Sistemas Colaborativos 2026
 ─────────────────────────────────────────────────────────────────────────────
@@ -21,7 +28,6 @@ Autores: Equipo SMA Quito — UCE Sistemas Colaborativos 2026
 import pandas as pd
 import numpy as np
 from pathlib import Path
-import sys
 
 # ── Rutas ──────────────────────────────────────────────────────────────────
 ROOT        = Path(__file__).resolve().parents[2]
@@ -29,201 +35,312 @@ GAMA_OUT    = ROOT / "gama" / "outputs"
 RESULTS_DIR = ROOT / "analysis" / "results"
 RESULTS_DIR.mkdir(parents=True, exist_ok=True)
 
-# ── Columnas esperadas del CSV de GAMA ────────────────────────────────────
-COLUMNS = [
-    "run_id", "escenario", "minuto", "hora_legible",
-    "es_hora_pico",
-    "flujo_poligono", "flujo_externo",
-    "pct_pagan", "pct_reroutean", "pct_metro",
+# ── Archivos de entrada por escenario ─────────────────────────────────────
+# E0_HET: baseline con flota heterogénea (nueva versión del modelo)
+# EB:     peaje por franja horaria (múltiples réplicas)
+ARCHIVOS_ESCENARIO = {
+    "E0_HET": ["E0_heterogeneo_metricas.csv"],
+    "EB":     None,          # None → búsqueda por patrón glob EB_run*
+}
+
+# ── Fracción de buses en la flota (calibrado DMQ 2023) ────────────────────
+# Usado para corregir directo_nse_bajo en el análisis de equidad.
+# Buses siempre toman RUTA_DIRECTA y siempre cuentan como NSE_BAJO,
+# lo que infla artificialmente ese contador. Esta fracción se aplica
+# como corrección estimada; documentar en el paper (§ Equidad NSE).
+NB_BUSES_DEFAULT = 30
+NB_TOTAL_DEFAULT = 300
+BUS_FRACTION     = NB_BUSES_DEFAULT / NB_TOTAL_DEFAULT   # 0.10
+
+# ── Columnas reales exportadas por GAMA ───────────────────────────────────
+# Orden exacto del CSV (header incluido en el archivo → pd.read_csv normal).
+# Las columnas NSE desagregadas solo existen en EB; en E0_HET pueden faltar.
+COLUMNAS_CORE = [
+    "escenario", "minuto", "hora", "es_hora_pico",
+    "nb_conductores",
     "velocidad_media_kmh",
+    "pct_ruta_directa", "pct_reroutean", "pct_metro",
+    "modal_shift_acum",
     "recaudacion_acum_usd",
-    "count_restringidos_placa",
+    "nb_restringidos_placa",
+]
+COLUMNAS_NSE = [
+    "directo_nse_alto",  "directo_nse_medio",  "directo_nse_bajo",
+    "metro_nse_alto",    "metro_nse_medio",     "metro_nse_bajo",
+    "rerouta_nse_alto",  "rerouta_nse_medio",   "rerouta_nse_bajo",
 ]
 
 
+# ─────────────────────────────────────────────────────────────────────────────
 def cargar_runs(escenario: str) -> pd.DataFrame:
     """
-    Carga todos los archivos CSV de un escenario (múltiples réplicas)
-    y los concatena en un único DataFrame.
+    Carga uno o varios CSV de un escenario y los concatena.
+    E0_HET: archivo fijo. EB: patrón glob EB_run*_metricas.csv.
     """
-    patron = f"{escenario}_run*_metricas.csv"
-    archivos = sorted(GAMA_OUT.glob(patron))
+    if ARCHIVOS_ESCENARIO.get(escenario):
+        archivos = [GAMA_OUT / f for f in ARCHIVOS_ESCENARIO[escenario]
+                    if (GAMA_OUT / f).exists()]
+    else:
+        archivos = sorted(GAMA_OUT.glob(f"{escenario}_run*_metricas.csv"))
 
     if not archivos:
-        print(f"[AVISO] No se encontraron archivos para escenario {escenario}")
+        print(f"[AVISO] No se encontraron archivos para '{escenario}'")
         print(f"        Buscado en: {GAMA_OUT}")
-        print(f"        Patrón:     {patron}")
-        print(f"        Generando datos de ejemplo para prueba del pipeline...")
+        print(f"        Generando datos sintéticos para prueba del pipeline...")
         return generar_datos_ejemplo(escenario)
 
     dfs = []
     for archivo in archivos:
         try:
-            df = pd.read_csv(archivo, names=COLUMNS, skiprows=1)
+            df = pd.read_csv(archivo)          # el CSV ya trae header propio
             df["archivo_fuente"] = archivo.name
             dfs.append(df)
-            print(f"  [OK] {archivo.name} — {len(df)} registros")
+            print(f"  [OK] {archivo.name} — {len(df)} registros, "
+                  f"{len(df.columns)} columnas")
         except Exception as e:
             print(f"  [ERROR] {archivo.name}: {e}")
 
-    if not dfs:
-        return generar_datos_ejemplo(escenario)
-
-    return pd.concat(dfs, ignore_index=True)
+    return pd.concat(dfs, ignore_index=True) if dfs else generar_datos_ejemplo(escenario)
 
 
+# ─────────────────────────────────────────────────────────────────────────────
+def rellenar_columnas_faltantes(df: pd.DataFrame, escenario: str) -> pd.DataFrame:
+    """
+    Paso 2: rellena columnas que pueden estar ausentes según el escenario.
+
+    E0_HET no tiene peaje → recaudacion_acum_usd = 0.
+    Si la restricción de placa no se exportó → nb_restringidos_placa = 0.
+    Columnas NSE desagregadas opcionales → 0 si ausentes.
+    """
+    # Columnas que E0 puede no tener (peaje no activo)
+    columnas_cero_float = ["recaudacion_acum_usd"]
+    columnas_cero_int   = ["nb_restringidos_placa", "modal_shift_acum"]
+
+    for col in columnas_cero_float:
+        if col not in df.columns:
+            df[col] = 0.0
+            print(f"  [RELLENO] '{col}' no encontrada en {escenario} → 0.0")
+
+    for col in columnas_cero_int:
+        if col not in df.columns:
+            df[col] = 0
+            print(f"  [RELLENO] '{col}' no encontrada en {escenario} → 0")
+
+    # Columnas NSE desagregadas
+    for col in COLUMNAS_NSE:
+        if col not in df.columns:
+            df[col] = 0
+
+    return df
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+def corregir_equidad_buses(df: pd.DataFrame) -> pd.DataFrame:
+    """
+    Paso 3: filtra la contribución de buses del análisis de equidad NSE.
+
+    Buses siempre toman RUTA_DIRECTA y se contabilizan como NSE_BAJO.
+    Esto infla directo_nse_bajo de forma no representativa (no es una
+    decisión libre de modo; es el comportamiento fijo del tipo BUS).
+
+    Corrección estimada:
+        bus_count_intervalo ≈ BUS_FRACTION × (directo_nse_bajo
+                               + metro_nse_bajo + rerouta_nse_bajo)
+    Se asume que toda la contribución bus cae en directo_nse_bajo.
+
+    Se generan columnas *_corr para uso en cálculo Gini (02_compare.py).
+    Las columnas originales se conservan intactas para trazabilidad.
+    """
+    total_bajo = (df["directo_nse_bajo"]
+                + df["metro_nse_bajo"]
+                + df["rerouta_nse_bajo"])
+
+    # Estimación lineal de decisiones de buses en cada intervalo
+    bus_directo_est = (total_bajo * BUS_FRACTION).round().astype(int)
+
+    df["directo_nse_bajo_corr"] = (df["directo_nse_bajo"] - bus_directo_est).clip(lower=0)
+    df["metro_nse_bajo_corr"]   = df["metro_nse_bajo"]      # buses no van al metro
+    df["rerouta_nse_bajo_corr"] = df["rerouta_nse_bajo"]    # buses no reroutean
+
+    # Fracción corregida: solo agentes con decisión libre de modo
+    total_nse_bajo_corr = (df["directo_nse_bajo_corr"]
+                         + df["metro_nse_bajo_corr"]
+                         + df["rerouta_nse_bajo_corr"])
+    df["pct_metro_bajo_corr"] = np.where(
+        total_nse_bajo_corr > 0,
+        df["metro_nse_bajo_corr"] / total_nse_bajo_corr * 100.0,
+        0.0
+    )
+
+    return df
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+def limpiar_dataframe(df: pd.DataFrame, escenario: str) -> pd.DataFrame:
+    """
+    Tipado, columnas calculadas y limpieza general.
+    """
+    # Rellenar columnas ausentes antes de cualquier operación
+    df = rellenar_columnas_faltantes(df, escenario)
+
+    # Tipos numéricos
+    cols_float = [
+        "velocidad_media_kmh", "pct_ruta_directa", "pct_reroutean",
+        "pct_metro", "recaudacion_acum_usd",
+    ]
+    cols_int = [
+        "minuto", "nb_conductores", "modal_shift_acum",
+        "nb_restringidos_placa",
+    ] + COLUMNAS_NSE
+
+    for col in cols_float:
+        if col in df.columns:
+            df[col] = pd.to_numeric(df[col], errors="coerce")
+    for col in cols_int:
+        if col in df.columns:
+            df[col] = pd.to_numeric(df[col], errors="coerce").fillna(0).astype(int)
+
+    # Booleano es_hora_pico
+    if "es_hora_pico" in df.columns:
+        df["es_hora_pico"] = (df["es_hora_pico"]
+                              .astype(str).str.lower()
+                              .isin(["true", "1", "yes"]))
+
+    # Hora decimal para gráficas
+    df["hora_decimal"] = df["minuto"] / 60.0
+
+    # Etiqueta de escenario normalizada
+    df["escenario"] = escenario
+
+    # Corrección de equidad NSE (elimina contribución de buses)
+    df = corregir_equidad_buses(df)
+
+    # Eliminar filas con datos críticos faltantes
+    df = df.dropna(subset=["minuto", "velocidad_media_kmh"])
+
+    return df
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+def calcular_estadisticas_por_run(df: pd.DataFrame) -> pd.DataFrame:
+    """
+    Media y std de métricas clave agrupando por escenario + minuto.
+    Para intervalos de confianza 95 % en el paper.
+    """
+    metricas = [
+        "velocidad_media_kmh",
+        "pct_ruta_directa", "pct_reroutean", "pct_metro",
+        "modal_shift_acum", "recaudacion_acum_usd",
+        "directo_nse_bajo_corr", "pct_metro_bajo_corr",
+    ]
+    agg = {col: ["mean", "std", "min", "max"]
+           for col in metricas if col in df.columns}
+
+    resumen = (df.groupby(["escenario", "minuto", "es_hora_pico"])
+                 .agg(agg))
+    resumen.columns = ["_".join(c).strip() for c in resumen.columns]
+    return resumen.reset_index()
+
+
+# ─────────────────────────────────────────────────────────────────────────────
 def generar_datos_ejemplo(escenario: str) -> pd.DataFrame:
     """
-    Genera datos sintéticos para probar el pipeline de análisis
-    antes de tener la simulación GAMA funcionando.
-    Basado en valores calibrados con datos AMT y benchmark Londres.
+    Datos sintéticos para probar el pipeline sin simulación GAMA.
+    Calibrados con datos AMT y benchmark Londres 2003.
     """
-    print(f"  [INFO] Generando datos sintéticos para {escenario}...")
-    np.random.seed(42 if escenario == "E0" else 99)
+    np.random.seed(42 if escenario == "E0_HET" else 99)
+    minutos = list(range(360, 1320, 15))
 
-    minutos = list(range(360, 1320, 15))  # 6:00am a 22:00pm, cada 15 min
-    n = len(minutos)
-
-    # Parámetros base por escenario
-    if escenario == "E0":
-        flujo_base = 320
-        velocidad_base = 16.0
-        pct_metro_base = 5.0
-    else:  # EB
-        flujo_base = 230   # ~28% reducción (benchmark Londres: 27%)
-        velocidad_base = 19.5  # ~22% mejora (benchmark: 20%)
-        pct_metro_base = 18.0  # Modal shift significativo
+    params = {
+        "E0_HET": dict(flujo=320, vel=16.0, metro=5.0,  recaud=0.0),
+        "EB":     dict(flujo=230, vel=19.5, metro=18.0, recaud=460.0),
+    }.get(escenario, dict(flujo=300, vel=17.0, metro=8.0, recaud=0.0))
 
     registros = []
-    for i, minuto in enumerate(minutos):
-        en_pico = (420 <= minuto <= 600) or (1020 <= minuto <= 1200)
+    for minuto in minutos:
+        pico = (420 <= minuto <= 600) or (1020 <= minuto <= 1200)
+        mult = 1.3 if pico else 0.8
+        vel  = params["vel"] * (0.75 if pico else 1.1) + np.random.normal(0, 1.5)
+        metro = params["metro"] * (1.4 if pico else 0.7) + np.random.normal(0, 2)
+        metro = float(np.clip(metro, 0, 100))
+        rerouta = (15.0 if escenario == "EB" and pico else 3.0) + np.random.normal(0, 2)
+        rerouta = float(max(0.0, rerouta))
+        directo = max(0.0, 100.0 - metro - rerouta)
+        nb = int(params["flujo"] * mult + np.random.normal(0, 20))
+        hh, mm = divmod(minuto, 60)
 
-        # Variación realista con ruido gaussiano
-        flujo = int(flujo_base * (1.3 if en_pico else 0.8) + np.random.normal(0, 20))
-        flujo = max(50, flujo)
-
-        velocidad = velocidad_base * (0.75 if en_pico else 1.1) + np.random.normal(0, 1.5)
-        velocidad = max(8.0, min(50.0, velocidad))
-
-        pct_metro = (pct_metro_base * (1.4 if en_pico else 0.7)) + np.random.normal(0, 2)
-        pct_metro = max(0.0, min(100.0, pct_metro))
-
-        pct_reroutean = (15.0 if escenario == "EB" and en_pico else 3.0) + np.random.normal(0, 2)
-        pct_reroutean = max(0.0, pct_reroutean)
-
-        pct_pagan = max(0.0, 100.0 - pct_metro - pct_reroutean) if escenario == "EB" else 97.0
-
-        recaudacion = (flujo * 2.0 * 0.6) if (escenario == "EB" and en_pico) else 0.0
-
-        horas = minuto // 60
-        mins  = minuto % 60
-        hora_str = f"{horas:02d}:{mins:02d}"
-
+        # NSE sintético (proporcional a distribución DMQ)
+        base_bajo = int(nb * 0.40)
         registros.append({
-            "run_id": 1,
             "escenario": escenario,
             "minuto": minuto,
-            "hora_legible": hora_str,
-            "es_hora_pico": en_pico,
-            "flujo_poligono": flujo,
-            "flujo_externo": int(flujo * 0.15),
-            "pct_pagan": round(pct_pagan, 2),
-            "pct_reroutean": round(pct_reroutean, 2),
-            "pct_metro": round(pct_metro, 2),
-            "velocidad_media_kmh": round(velocidad, 2),
-            "recaudacion_acum_usd": round(recaudacion, 2),
-            "count_restringidos_placa": int(flujo * 0.20),
+            "hora": f"{hh:02d}:{mm:02d}",
+            "es_hora_pico": pico,
+            "nb_conductores": nb,
+            "velocidad_media_kmh": round(float(np.clip(vel, 8, 50)), 2),
+            "pct_ruta_directa": round(directo, 2),
+            "pct_reroutean": round(rerouta, 2),
+            "pct_metro": round(metro, 2),
+            "modal_shift_acum": int(metro / 100 * nb * 3),
+            "recaudacion_acum_usd": round(params["recaud"] * mult, 2) if pico else 0.0,
+            "nb_restringidos_placa": int(nb * 0.20),
+            "directo_nse_alto":  int(nb * 0.15 * directo / 100),
+            "directo_nse_medio": int(nb * 0.45 * directo / 100),
+            "directo_nse_bajo":  base_bajo,
+            "metro_nse_alto":    int(nb * 0.15 * metro / 100),
+            "metro_nse_medio":   int(nb * 0.45 * metro / 100),
+            "metro_nse_bajo":    int(nb * 0.40 * metro / 100),
+            "rerouta_nse_alto":  int(nb * 0.15 * rerouta / 100),
+            "rerouta_nse_medio": int(nb * 0.45 * rerouta / 100),
+            "rerouta_nse_bajo":  int(nb * 0.40 * rerouta / 100),
             "archivo_fuente": f"SYNTHETIC_{escenario}",
         })
 
     return pd.DataFrame(registros)
 
 
-def limpiar_dataframe(df: pd.DataFrame, escenario: str) -> pd.DataFrame:
-    """
-    Limpieza y tipado del DataFrame.
-    """
-    # Tipos numéricos
-    numericas = [
-        "minuto", "flujo_poligono", "flujo_externo",
-        "pct_pagan", "pct_reroutean", "pct_metro",
-        "velocidad_media_kmh", "recaudacion_acum_usd",
-        "count_restringidos_placa",
-    ]
-    for col in numericas:
-        if col in df.columns:
-            df[col] = pd.to_numeric(df[col], errors="coerce")
-
-    # Booleano
-    if "es_hora_pico" in df.columns:
-        df["es_hora_pico"] = df["es_hora_pico"].astype(str).str.lower().isin(["true", "1", "yes"])
-
-    # Columna calculada: reducción vehicular vs. capacidad base
-    # Solo relevante para comparación E0 vs EB; se hace en script 02
-    df["escenario"] = escenario
-
-    # Agregar hora decimal para facilitar gráficas
-    df["hora_decimal"] = df["minuto"] / 60.0
-
-    # Eliminar filas con datos faltantes críticos
-    df = df.dropna(subset=["minuto", "flujo_poligono"])
-
-    return df
-
-
-def calcular_estadisticas_por_run(df: pd.DataFrame) -> pd.DataFrame:
-    """
-    Calcula media y std de métricas clave agrupando por escenario y minuto.
-    Necesario para el análisis estadístico del paper (intervalo de confianza 95%).
-    """
-    metricas_clave = [
-        "flujo_poligono", "flujo_externo", "velocidad_media_kmh",
-        "pct_pagan", "pct_reroutean", "pct_metro",
-    ]
-
-    agg_dict = {col: ["mean", "std", "min", "max"] for col in metricas_clave}
-    agg_dict["recaudacion_acum_usd"] = ["mean", "std"]
-
-    resumen = df.groupby(["escenario", "minuto", "es_hora_pico"]).agg(agg_dict)
-    resumen.columns = ["_".join(col).strip() for col in resumen.columns]
-    resumen = resumen.reset_index()
-
-    return resumen
-
-
+# ─────────────────────────────────────────────────────────────────────────────
 def main():
     print("=" * 60)
-    print("  Procesamiento de resultados GAMA — SMA Quito")
+    print("  Procesamiento de resultados GAMA — SMA Quito  v2")
     print("=" * 60)
+    print(f"  BUS_FRACTION para corrección NSE: {BUS_FRACTION:.2f}  "
+          f"({NB_BUSES_DEFAULT} buses / {NB_TOTAL_DEFAULT} total)")
 
     resultados = {}
 
-    for escenario in ["E0", "EB"]:
+    for escenario in ["E0_HET", "EB"]:
         print(f"\n[{escenario}] Cargando datos...")
-        df_raw  = cargar_runs(escenario)
+        df_raw    = cargar_runs(escenario)
         df_limpio = limpiar_dataframe(df_raw, escenario)
         resultados[escenario] = df_limpio
 
-        # Guardar CSV procesado
-        ruta_salida = RESULTS_DIR / f"{escenario}_processed.csv"
-        df_limpio.to_csv(ruta_salida, index=False)
-        print(f"  → Guardado: {ruta_salida}")
+        ruta = RESULTS_DIR / f"{escenario}_processed.csv"
+        df_limpio.to_csv(ruta, index=False)
+        print(f"  → {ruta}")
         print(f"     Filas: {len(df_limpio)} | Columnas: {len(df_limpio.columns)}")
-        print(f"     Rango de horas: {df_limpio['hora_legible'].iloc[0]} – {df_limpio['hora_legible'].iloc[-1]}")
+        hora_ini = df_limpio["hora"].iloc[0]  if "hora" in df_limpio.columns else "?"
+        hora_fin = df_limpio["hora"].iloc[-1] if "hora" in df_limpio.columns else "?"
+        print(f"     Rango horario: {hora_ini} – {hora_fin}")
+        n_corr = (df_limpio["directo_nse_bajo"]
+                - df_limpio["directo_nse_bajo_corr"]).sum()
+        print(f"     Decisiones bus eliminadas del análisis NSE: {n_corr}")
 
-    # Dataset combinado para comparación directa
+    # Dataset combinado
     df_combined = pd.concat(resultados.values(), ignore_index=True)
-    ruta_combined = RESULTS_DIR / "combined.csv"
-    df_combined.to_csv(ruta_combined, index=False)
-    print(f"\n[OK] Dataset combinado: {ruta_combined} ({len(df_combined)} filas)")
+    ruta_comb = RESULTS_DIR / "combined.csv"
+    df_combined.to_csv(ruta_comb, index=False)
+    print(f"\n[OK] Dataset combinado: {ruta_comb} ({len(df_combined)} filas)")
 
-    # Estadísticas de resumen
+    # Resumen estadístico
     resumen = calcular_estadisticas_por_run(df_combined)
-    ruta_resumen = RESULTS_DIR / "resumen_estadistico.csv"
-    resumen.to_csv(ruta_resumen, index=False)
-    print(f"[OK] Resumen estadístico: {ruta_resumen}")
+    ruta_res = RESULTS_DIR / "resumen_estadistico.csv"
+    resumen.to_csv(ruta_res, index=False)
+    print(f"[OK] Resumen estadístico: {ruta_res}")
 
     print("\n[DONE] Pipeline 01 completado. Ejecutar 02_compare_scenarios.py")
+    print("\n  NOTA: Para el cálculo Δ Gini modal usar columnas *_corr,")
+    print("  no los contadores NSE originales (buses incluidos en _bajo).")
 
 
 if __name__ == "__main__":

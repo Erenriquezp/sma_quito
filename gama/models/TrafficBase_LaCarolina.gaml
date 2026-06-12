@@ -229,7 +229,7 @@ species road {
 	// Ocupación ponderada basada en el factor geométrico/vial de cada tipo de vehículo
 	float nb_people   <- 0.0 update: sum(ConductorBDI at_distance 10 collect each.factor_capacidad_via);
 	float speed_coeff <- 1.0 update: exp(-nb_people / capacity) min: 0.1;
-	aspect default { draw (shape + 5) color: #white; }
+	aspect default { draw shape  color: #white width: 2; }
 }
 
 species PuntoControl {
@@ -394,8 +394,10 @@ species ConductorBDI skills: [moving] {
 			else if (nse = "MEDIO") { count_metro_medio <- count_metro_medio + 1; }
 			else                    { count_metro_bajo  <- count_metro_bajo  + 1; }
 			
-			ask (EstacionMetro closest_to self) {
-				if not saturada { pasajeros_espera <- pasajeros_espera + 1; }
+			if not empty(EstacionMetro) {
+			    ask (EstacionMetro closest_to self) {
+			        if not saturada { pasajeros_espera <- pasajeros_espera + 1; }
+			    }
 			}
 		} else {
 			intencion       <- "REROUTEAR";
@@ -449,8 +451,9 @@ species ConductorBDI skills: [moving] {
 			decision_tomada  <- false;
 			intencion        <- "RUTA_DIRECTA";
 			tarifa_percibida <- 0.0;
+			tarifa_efectiva  <- 0.0;   
 			t_sin_avanzar    <- 0;
-		}
+					}
 	}
 
 	reflex nuevo_destino when: destino = nil {
@@ -475,13 +478,12 @@ species ConductorBDI skills: [moving] {
 		}
 
 		// Dimensionamiento físico por Escala V2
-		float sz <- 18.0;
-		if      (tipo_vehiculo = "MOTO")  { sz <- 12.0; }
-		else if (tipo_vehiculo = "SUV")   { sz <- 22.0; }
-		else if (tipo_vehiculo = "BUS")   { sz <- 32.0; }
-		else if (tipo_vehiculo = "CARGA") { sz <- 28.0; }
-
-		draw circle(sz) color: col;
+		float sz <- 8.0;
+		if      (tipo_vehiculo = "MOTO")  { sz <- 5.0;  }
+		else if (tipo_vehiculo = "SUV")   { sz <- 10.0; }
+		else if (tipo_vehiculo = "BUS")   { sz <- 14.0; }
+		else if (tipo_vehiculo = "CARGA") { sz <- 12.0; }
+		draw circle(sz) at: location + {0, 0, 5} color: col border: #black;
 	}
 }
 

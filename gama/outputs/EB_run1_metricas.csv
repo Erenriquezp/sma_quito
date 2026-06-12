@@ -1,1 +1,2 @@
 escenario,minuto,hora,es_hora_pico,tarifa_vigente_usd,nb_conductores,velocidad_media_kmh,pct_ruta_directa,pct_reroutean,pct_metro,modal_shift_acum,recaudacion_acum_usd,nb_restringidos_placa,directo_nse_alto,directo_nse_medio,directo_nse_bajo,metro_nse_alto,metro_nse_medio,metro_nse_bajo,rerouta_nse_alto,rerouta_nse_medio,rerouta_nse_bajo
+EB,375,6:15,false,0.0,300,0.0,100.0,0.0,0.0,0,0.0,0,0,0,0,0,0,0,0,0,0

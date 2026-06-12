@@ -335,7 +335,7 @@ species road {
 	float nb_people   <- 0.0 update: sum(ConductorBDI at_distance 10
                                      collect each.factor_capacidad_via);
 	float speed_coeff <- 1.0 update: exp(-nb_people / capacity) min: 0.1;
-	aspect default { draw (shape + 5) color: #white; }
+	aspect default { draw shape  color: #white width: 2; }
 }
 
 // ── Punto de control con cobro activo ─────────────────────────────────────────
@@ -588,26 +588,6 @@ species ConductorBDI skills: [moving] {
 		metro_accesible   <- rnd(1.0) < 0.60;
 		pos_anterior      <- location;
 
-    if (r < PCT_NSE_ALTO) {
-        nse <- "ALTO";  wtp <- WTP_NSE_ALTO;
-        w_tiempo <- 0.35; w_costo <- 0.15; w_comodidad <- 0.50;
-        speed <- speed + 30.0;
-        umbral_congestion <- 0.40;
-    } else if (r < PCT_NSE_ALTO + PCT_NSE_MEDIO) {
-        nse <- "MEDIO"; wtp <- WTP_NSE_MEDIO;
-        w_tiempo <- 0.35; w_costo <- 0.35; w_comodidad <- 0.30;
-        umbral_congestion <- 0.55;
-    } else {
-        nse <- "BAJO";  wtp <- WTP_NSE_BAJO;
-        w_tiempo <- 0.20; w_costo <- 0.65; w_comodidad <- 0.15;
-        speed <- max(10.0, speed - 10.0);
-        umbral_congestion <- 0.70;
-    }
-    restringido_placa <- (rnd(1.0) < PCT_RESTRICCION_PLACA)
-                       and (dia_semana >= 1 and dia_semana <= 5);
-    metro_accesible   <- rnd(1.0) < 0.60;
-    pos_anterior      <- location;
-
     // ── NUEVO: propiedades específicas por tipo de vehículo ─────────────────
     if (tipo_vehiculo = "MOTO") {
         speed             <- speed + 40.0;   // mayor movilidad en tráfico denso
@@ -803,6 +783,7 @@ species ConductorBDI skills: [moving] {
 			destino          <- any_location_in(one_of(pool));
 			decision_tomada  <- false;
 			intencion        <- "RUTA_DIRECTA";
+			tarifa_efectiva <- 0.0;
 			tarifa_percibida <- 0.0;
 			t_sin_avanzar    <- 0;
 		}
@@ -834,13 +815,13 @@ species ConductorBDI skills: [moving] {
         and minuto_actual <= RESTRICCION_FIN) { col <- #red; }
 
     // ── Tamaño diferenciado por tipo ──────────────────────────────────────
-    float sz <- 18.0;
-    if      (tipo_vehiculo = "MOTO")  { sz <- 12.0; }
-    else if (tipo_vehiculo = "SUV")   { sz <- 22.0; }
-    else if (tipo_vehiculo = "BUS")   { sz <- 32.0; }
-    else if (tipo_vehiculo = "CARGA") { sz <- 28.0; }
-
-    draw circle(sz) color: col;
+    float sz <- 8.0;
+	if      (tipo_vehiculo = "MOTO")  { sz <- 5.0;  }
+	else if (tipo_vehiculo = "SUV")   { sz <- 10.0; }
+	else if (tipo_vehiculo = "BUS")   { sz <- 14.0; }
+	else if (tipo_vehiculo = "CARGA") { sz <- 12.0; }
+	
+	draw circle(sz) at: location + {0, 0, 5} color: col border: #black;
 }
 }
 
