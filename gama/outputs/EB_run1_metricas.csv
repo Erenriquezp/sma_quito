@@ -1,15 +1,2 @@
-'escenario','minuto','hora','es_hora_pico','tarifa_vigente_usd','nb_conductores','velocidad_media_kmh','pct_ruta_directa','pct_reroutean','pct_metro','modal_shift_acum','recaudacion_acum_usd','nb_restringidos_placa','directo_nse_alto','directo_nse_medio','directo_nse_bajo','metro_nse_alto','metro_nse_medio','metro_nse_bajo','rerouta_nse_alto','rerouta_nse_medio','rerouta_nse_bajo'
 escenario,minuto,hora,es_hora_pico,tarifa_vigente_usd,nb_conductores,velocidad_media_kmh,pct_ruta_directa,pct_reroutean,pct_metro,modal_shift_acum,recaudacion_acum_usd,nb_restringidos_placa,directo_nse_alto,directo_nse_medio,directo_nse_bajo,metro_nse_alto,metro_nse_medio,metro_nse_bajo,rerouta_nse_alto,rerouta_nse_medio,rerouta_nse_bajo
-EB,375,6:15,false,0.0,150,19.6,100.0,0.0,0.0,0,0.0,0,0,0,0,0,0,0,0,0,0
-EB,390,6:30,false,0.0,150,19.6,100.0,0.0,0.0,0,0.0,0,0,0,0,0,0,0,0,0,0
-EB,405,6:45,false,0.0,150,19.6,100.0,0.0,0.0,0,0.0,0,0,0,0,0,0,0,0,0,0
-EB,420,7:00,true,0.0,150,19.4,100.0,0.0,0.0,0,0.0,0,0,0,0,0,0,0,0,0,0
-EB,435,7:15,true,2.0,150,19.3,42.3,18.1,39.5,696,300.0,12,150,0,0,212,563,274,1,265,220
-EB,450,7:30,true,2.0,150,19.3,41.0,18.2,40.8,1719,554.0,0,127,0,0,206,561,253,0,244,211
-EB,465,7:45,true,2.0,150,19.5,39.1,17.8,43.2,2765,760.0,0,103,0,0,215,566,274,0,212,222
-EB,480,8:00,true,2.0,150,19.2,41.2,18.7,40.1,3754,972.0,0,106,0,0,185,490,250,0,218,214
-EB,495,8:15,true,2.0,150,19.1,38.3,19.7,42.0,4680,1188.0,0,108,0,0,182,478,271,0,222,214
-EB,510,8:30,true,2.0,150,18.9,39.7,18.8,41.5,5557,1366.0,0,89,0,0,165,466,250,0,222,178
-EB,525,8:45,true,2.0,150,18.6,39.2,19.8,41.0,6438,1528.0,0,81,0,0,136,448,244,0,224,176
-EB,540,9:00,true,2.0,150,18.6,38.8,21.4,39.8,7232,1694.0,0,83,0,0,132,426,242,0,221,210
-EB,555,9:15,true,2.0,150,18.5,39.9,21.4,38.7,8000,1880.0,0,93,0,0,123,403,222,0,227,187
+EB,375,6:15,false,0.0,300,0.0,100.0,0.0,0.0,0,0.0,0,0,0,0,0,0,0,0,0,0

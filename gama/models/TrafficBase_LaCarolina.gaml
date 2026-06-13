@@ -1,10 +1,17 @@
 /**
- * TrafficBase_LaCarolina.gaml
+ * TrafficBase_LaCarolina_V2_Heterogeneo.gaml
  * Modelo SMA — Zona de cobro por congestión, Parque La Carolina, Quito
  * UCE — Sistemas Colaborativos 2026
+ *
+ * MODIFICACIONES (Integración V2 Heterogénea sin Restricciones):
+ * 1. Remoción absoluta de la lógica "Pico y Placa" (restringido_placa, count_restringidos, etc.).
+ * 2. Segmentación de la flota: Motos, Autos, SUVs, Buses y Carga.
+ * 3. Cálculo de congestión vial dinámico ponderado mediante 'factor_capacidad_via'.
+ * 4. Corrección del bug de doble asignación de NSE en el init de ConductorBDI.
+ * 5. Ajuste en el display para reflejar la leyenda de la flota y decisiones BDI puras.
  */
 
-model TrafficBase_LaCarolina
+model TrafficBase_LaCarolina_V2_Heterogeneo
 
 global {
 
@@ -22,27 +29,25 @@ global {
 	int HORA_PICO_VES_FIN    <- 1200;
 	bool es_hora_pico        <- false;
 
-	// ── Parámetros de agentes ────────────────────────────────────────────────
-	int   NB_CONDUCTORES        <- 150;
+	// ── Parámetros de la Flota (Total Ajustado a Escala Equivalente) ─────────
+	int NB_MOTOS  <- 45;    // ~15 % de la flota
+	int NB_AUTOS  <- 165;   // ~55 %
+	int NB_SUVS   <- 45;    // ~15 %
+	int NB_BUSES  <- 30;    // ~10 % — Transporte Público Exonerado
+	int NB_CARGAS <- 15;    // ~5 %
+	
 	float PCT_NSE_ALTO          <- 0.15;
 	float PCT_NSE_MEDIO         <- 0.45;
 	float PCT_NSE_BAJO          <- 0.40;
 	float WTP_NSE_ALTO          <- 3.00;
-	// WTP_NSE_MEDIO subido de $1.50 a $2.25 para crear gradiente de comportamiento
-	// realista en el NSE_MEDIO frente a la tarifa pico de $2.00 del Escenario B.
-	// En E0 este valor no afecta el resultado (tarifa = 0) pero mantiene
-	// consistencia de parámetros entre escenarios para el paper.
 	float WTP_NSE_MEDIO         <- 2.25;
 	float WTP_NSE_BAJO          <- 0.50;
-	float PCT_RESTRICCION_PLACA <- 0.20;
-	int   RESTRICCION_INICIO    <- 360;
-	int   RESTRICCION_FIN       <- 1200;
 	int   dia_semana            <- 1;
 
-	// ── Peaje (activo solo en EB) ────────────────────────────────────────────
-	float TARIFA_PICO  <- 2.00;
+	// ── Peaje (Inactivo en E0) ───────────────────────────────────────────────
 	float TARIFA_VALLE <- 0.00;
-
+	
+	float TARIFA_PICO_AUTO <- 2.00;
 	// ── Costo referencia Metro (para función de utilidad) ────────────────────
 	float COSTO_METRO <- 0.45;
 
@@ -55,27 +60,17 @@ global {
 	int   count_ruta_directa <- 0;
 	int   count_reroutean    <- 0;
 	int   count_metro        <- 0;
-	int   count_restringidos <- 0;
 	int   chart_ruta_directa <- 0;
 	int   chart_reroutean    <- 0;
 	int   chart_metro        <- 0;
-	int   chart_restringidos <- 0;
 
 	// ── Velocidad media emergente ─────────────────────────────────────────────
-	// Calculada cada ciclo como promedio del speed_kmh de los conductores activos.
-	// Un conductor se considera "activo" si avanzó al menos 1 m en el ciclo anterior
-	// (t_sin_avanzar = 0) y no está retenido por restricción de placa.
-	// Conversión: speed [m/ciclo] × (1 ciclo / 10 s) × (3600 s / 1000 m) = speed × 0.36 km/h
 	float velocidad_media    <- 0.0;
 
 	// ── Métricas de modal shift ───────────────────────────────────────────────
-	// Acumulado de pasajeros que abordaron el Metro durante toda la simulación.
-	// Se suma desde ambas EstacionMetro para tener el total del polígono.
 	int   modal_shift_acum   <- 0;
 
 	// ── Métricas desagregadas por NSE ────────────────────────────────────────
-	// Contadores de decisiones por perfil socioeconómico en el intervalo actual.
-	// Permiten calcular el índice de equidad en el paper (Δ Gini modal).
 	int   count_directo_alto  <- 0;
 	int   count_directo_medio <- 0;
 	int   count_directo_bajo  <- 0;
@@ -87,18 +82,14 @@ global {
 	int   count_rerouta_bajo  <- 0;
 
 	float recaudacion_acum   <- 0.0;
-	int   INTERVALO_LOG      <- 90;   // cada 90 ciclos × 10 s = 15 minutos simulados
+	int   INTERVALO_LOG      <- 90;   
 	string OUTPUT_PATH       <- "../outputs/";
-
-	// ── Flag para escribir header solo una vez ────────────────────────────────
-	// GAMA acumula filas en el CSV si rewrite:false, pero escribe el header
-	// en cada llamada a save con header:true. Este flag garantiza que el
-	// encabezado se escriba únicamente en el primer intervalo de exportación.
 	bool   csv_header_escrito <- false;
 
 	init {
 		write "=================================================";
-		write "  ESCENARIO 0 — BASELINE SIN PEAJE";
+		write "  ESCENARIO 0 MODIFICADO — BASELINE HETEROGÉNEO";
+		write "  SIN PEAJE NI RESTRICCIÓN DE PLACA";
 		write "  SMA Movilidad Quito — UCE 2026";
 		write "=================================================";
 
@@ -107,13 +98,9 @@ global {
 		road_weights <- road as_map (each :: each.shape.perimeter);
 		road_network <- as_edge_graph(road);
 
-		// FIX DEFINITIVO: extraer el componente conexo principal del grafo.
-		// as_edge_graph con shapefiles reales produce múltiples componentes aisladas.
-		// goto falla silenciosamente cuando origen y destino están en componentes distintas,
-		// causando que t_sin_avanzar suba indefinidamente y los agentes se congelen.
 		graph main_graph   <- main_connected_component(road_network);
 		roads_conectadas   <- road where (main_graph contains_edge each.shape);
-		// Fallback: si el filtro por edge falla, usar todas las roads del grafo principal
+		
 		if empty(roads_conectadas) {
 			roads_conectadas <- road where (
 				main_graph contains_node (first(each.shape.points))
@@ -126,79 +113,62 @@ global {
 
 		write "  Red vial: " + length(road) + " segmentos";
 		write "  Componente principal: " + length(roads_conectadas) + " segmentos";
-		write "  BBOX: " + envelope(road);
 
-		// Puntos de control — coordenadas en espacio LOCAL del shapefile
-		// BBOX: x: 0..3790,  y: 0..4210
-		// El Parque La Carolina ocupa aprox. x: 1200..2400, y: 2600..3800
-		create PuntoControl with: [id_control::1,
-		    nombre_acceso::"C1-NacUnidas/Amazonas",
-		    location::{1200.0, 3500.0},
-		    tarifa_vigente::0.0, modo_peaje_activo::false];
+		// Puntos de Control (Estáticos en E0 - Sin Cobro)
+		create PuntoControl with: [id_control::1, nombre_acceso::"C1-NacUnidas/Amazonas", location::{1200.0, 3500.0}, tarifa_vigente::0.0, modo_peaje_activo::false];
+		create PuntoControl with: [id_control::2, nombre_acceso::"C2-NacUnidas/Shyris", location::{2400.0, 3500.0}, tarifa_vigente::0.0, modo_peaje_activo::false];
+		create PuntoControl with: [id_control::3, nombre_acceso::"C3-Shyris/Republica", location::{2400.0, 2700.0}, tarifa_vigente::0.0, modo_peaje_activo::false];
+		create PuntoControl with: [id_control::4, nombre_acceso::"C4-Amazonas/Republica", location::{1200.0, 2700.0}, tarifa_vigente::0.0, modo_peaje_activo::false];
+		create PuntoControl with: [id_control::5, nombre_acceso::"C5-6Dic/NacUnidas", location::{1800.0, 3500.0}, tarifa_vigente::0.0, modo_peaje_activo::false];
 
-		create PuntoControl with: [id_control::2,
-		    nombre_acceso::"C2-NacUnidas/Shyris",
-		    location::{2400.0, 3500.0},
-		    tarifa_vigente::0.0, modo_peaje_activo::false];
+		create EstacionMetro with: [nombre::"Iñaquito", location::{1800.0, 3600.0}];
+		create EstacionMetro with: [nombre::"La Carolina", location::{1800.0, 3100.0}];
 
-		create PuntoControl with: [id_control::3,
-		    nombre_acceso::"C3-Shyris/Republica",
-		    location::{2400.0, 2700.0},
-		    tarifa_vigente::0.0, modo_peaje_activo::false];
-
-		create PuntoControl with: [id_control::4,
-		    nombre_acceso::"C4-Amazonas/Republica",
-		    location::{1200.0, 2700.0},
-		    tarifa_vigente::0.0, modo_peaje_activo::false];
-
-		create PuntoControl with: [id_control::5,
-		    nombre_acceso::"C5-6Dic/NacUnidas",
-		    location::{1800.0, 3500.0},
-		    tarifa_vigente::0.0, modo_peaje_activo::false];
-
-		create EstacionMetro with: [nombre::"Iñaquito",
-		    location::{1800.0, 3600.0}];
-
-		create EstacionMetro with: [nombre::"La Carolina",
-		    location::{1800.0, 3100.0}];
-
-		create ConductorBDI number: NB_CONDUCTORES {
-			// Fallback a toda la red si roads_conectadas estuviera vacía
-			list<road> pool <- empty(roads_conectadas) ? list(road) : roads_conectadas;
-			road rd  <- one_of(pool);
-			location <- any_location_in(rd);
-			destino  <- any_location_in(one_of(pool));
+		// ── Creación Estructurada de la Flota Vehicular Heterogénea ─────────
+		list<road> road_pool <- empty(roads_conectadas) ? list(road) : roads_conectadas;
+		
+		create ConductorBDI number: NB_MOTOS {
+			tipo_vehiculo <- "MOTO";
+			road rd <- one_of(road_pool); location <- any_location_in(rd); destino <- any_location_in(one_of(road_pool));
+		}
+		create ConductorBDI number: NB_AUTOS {
+			tipo_vehiculo <- "AUTO";
+			road rd <- one_of(road_pool); location <- any_location_in(rd); destino <- any_location_in(one_of(road_pool));
+		}
+		create ConductorBDI number: NB_SUVS {
+			tipo_vehiculo <- "SUV";
+			road rd <- one_of(road_pool); location <- any_location_in(rd); destino <- any_location_in(one_of(road_pool));
+		}
+		create ConductorBDI number: NB_BUSES {
+			tipo_vehiculo <- "BUS";
+			road rd <- one_of(road_pool); location <- any_location_in(rd); destino <- any_location_in(one_of(road_pool));
+		}
+		create ConductorBDI number: NB_CARGAS {
+			tipo_vehiculo <- "CARGA";
+			road rd <- one_of(road_pool); location <- any_location_in(rd); destino <- any_location_in(one_of(road_pool));
 		}
 
-		// Inicializar chart con estado inicial
-		chart_ruta_directa <- length(ConductorBDI where (not each.restringido_placa));
-		chart_restringidos <- length(ConductorBDI where (each.restringido_placa));
+		chart_ruta_directa <- length(ConductorBDI);
 
-		// Limpiar el CSV al inicio de cada run para evitar acumulación entre ejecuciones.
-		// Se escribe solo el encabezado; los datos se añaden en exportar_metricas.
-		string archivo_csv <- OUTPUT_PATH + "E0_run1_metricas.csv";
+		// Configuración del CSV sin columnas de restricción de placa
+		string archivo_csv <- OUTPUT_PATH + "E0_heterogeneo_metricas.csv";
 		save ["escenario","minuto","hora","es_hora_pico",
-		      "nb_conductores",
-		      "velocidad_media_kmh",
-		      "pct_ruta_directa","pct_reroutean","pct_metro",
-		      "modal_shift_acum",
-		      "recaudacion_acum_usd","nb_restringidos_placa",
+		      "nb_conductores","velocidad_media_kmh",
+		      "pct_ruta_directa","pct_reroutean","pct_metro","modal_shift_acum",
 		      "directo_nse_alto","directo_nse_medio","directo_nse_bajo",
 		      "metro_nse_alto","metro_nse_medio","metro_nse_bajo",
 		      "rerouta_nse_alto","rerouta_nse_medio","rerouta_nse_bajo"]
 		to: archivo_csv format: "csv" rewrite: true;
 		csv_header_escrito <- true;
 
-		write "  Conductores: " + NB_CONDUCTORES;
+		write "  Total Conductores Heterogéneos: " + length(ConductorBDI);
+		write "  Motos: "  + NB_MOTOS  + " | Autos: " + NB_AUTOS + " | SUV: " + NB_SUVS + " | Buses: " + NB_BUSES + " | Carga: " + NB_CARGAS;
 		write "  NSE ALTO: "  + length(ConductorBDI where (each.nse = "ALTO"));
 		write "  NSE MEDIO: " + length(ConductorBDI where (each.nse = "MEDIO"));
 		write "  NSE BAJO: "  + length(ConductorBDI where (each.nse = "BAJO"));
-		write "  Placa restringida: " + length(ConductorBDI where (each.restringido_placa));
 		write "=================================================";
 	}
 
-	// FIX: calcular minuto_actual desde el cycle y el step, no desde time/60
-	// cycle cuenta los pasos de simulación; step = 10 s → cada ciclo avanza 10 s = 1/6 min
 	reflex avanzar_reloj {
 		minuto_actual <- hora_inicio_sim + int(cycle * step / 60.0);
 		es_hora_pico  <-
@@ -210,77 +180,56 @@ global {
 		road_weights <- road as_map (each :: each.shape.perimeter / each.speed_coeff);
 		road_network <- road_network with_weights road_weights;
 
-		// ── Velocidad EFECTIVA de desplazamiento ─────────────────────────────
-		// Calcula la velocidad como distancia real recorrida en el ciclo anterior,
-		// no como promedio de speed intrínseca del agente.
-		// Conversión: distancia [m/ciclo] × 0.36 = km/h  (step=10s)
-		list<ConductorBDI> activos <- ConductorBDI where (
-			each.pos_anterior != nil
-			and not (each.restringido_placa
-			         and minuto_actual >= RESTRICCION_INICIO
-			         and minuto_actual <= RESTRICCION_FIN)
-		);
+		list<ConductorBDI> activos <- ConductorBDI where (each.pos_anterior != nil);
 		if empty(activos) {
 			velocidad_media <- 0.0;
 		} else {
-			float dist_media_ciclo <- mean(activos collect
-			    (each.location distance_to each.pos_anterior));
+			float dist_media_ciclo <- mean(activos collect (each.location distance_to each.pos_anterior));
 			velocidad_media <- round(dist_media_ciclo * 0.36 * 10.0) / 10.0;
 		}
 	}
 
-	// Exporta una fila al CSV cada INTERVALO_LOG ciclos (= 15 min simulados).
-	// El archivo fue creado con encabezado en init, aquí solo se añaden filas.
 	reflex exportar_metricas when: (cycle mod INTERVALO_LOG = 0) and (cycle > 0) {
-		string archivo <- OUTPUT_PATH + "E0_run1_metricas.csv";
+		string archivo <- OUTPUT_PATH + "E0_heterogeneo_metricas.csv";
 
-		// Totales del intervalo
 		int total <- count_ruta_directa + count_reroutean + count_metro;
 		float pd  <- (total > 0) ? (count_ruta_directa / float(total) * 100.0) : 0.0;
 		float pr  <- (total > 0) ? (count_reroutean    / float(total) * 100.0) : 0.0;
 		float pm  <- (total > 0) ? (count_metro        / float(total) * 100.0) : 0.0;
 
-		// Modal shift acumulado: suma de pasajeros que abordaron el Metro
 		modal_shift_acum <- sum(EstacionMetro collect each.modal_shift_total);
 
 		int    hh      <- int(minuto_actual / 60);
 		int    mm      <- minuto_actual mod 60;
 		string hora_str <- string(hh) + ":" + (mm < 10 ? "0" : "") + string(mm);
 
-		save ["E0", minuto_actual, hora_str, es_hora_pico,
-		      length(ConductorBDI),
-		      velocidad_media,
-		      round(pd * 10) / 10.0,
-		      round(pr * 10) / 10.0,
-		      round(pm * 10) / 10.0,
+		save ["E0_HET", minuto_actual, hora_str, es_hora_pico,
+		      length(ConductorBDI), velocidad_media,
+		      round(pd * 10) / 10.0, round(pr * 10) / 10.0, round(pm * 10) / 10.0,
 		      modal_shift_acum,
-		      round(recaudacion_acum * 100) / 100.0,
-		      count_restringidos,
 		      count_directo_alto,  count_directo_medio,  count_directo_bajo,
 		      count_metro_alto,    count_metro_medio,    count_metro_bajo,
 		      count_rerouta_alto,  count_rerouta_medio,  count_rerouta_bajo]
 		to: archivo format: "csv" rewrite: false;
 
-		// Resetear contadores del intervalo (acumulados se mantienen)
-		count_ruta_directa <- 0; count_reroutean   <- 0;
-		count_metro        <- 0; count_restringidos <- 0;
+		count_ruta_directa <- 0; count_reroutean   <- 0; count_metro <- 0;
 		count_directo_alto  <- 0; count_directo_medio <- 0; count_directo_bajo  <- 0;
 		count_metro_alto    <- 0; count_metro_medio   <- 0; count_metro_bajo    <- 0;
 		count_rerouta_alto  <- 0; count_rerouta_medio <- 0; count_rerouta_bajo  <- 0;
 	}
 
 	reflex fin_sim when: minuto_actual >= hora_fin_sim {
-		write "SIMULACIÓN COMPLETADA — vel. final: " + round(velocidad_media) + " km/h";
+		write "SIMULACIÓN COMPLETADA HETEROGÉNEA — vel. final: " + round(velocidad_media) + " km/h";
 		do pause;
 	}
 }
 
 species road {
 	float capacity    <- 1 + shape.perimeter / 30;
-	// FIX: at_distance 1 era demasiado pequeño para coordenadas proyectadas (metros)
-	int   nb_people   <- 0 update: length(ConductorBDI at_distance 10);
+	// Ocupación ponderada basada en el factor geométrico/vial de cada tipo de vehículo
+	float nb_people   <- 0.0 update: sum(ConductorBDI at_distance 10 collect each.factor_capacidad_via);
 	float speed_coeff <- 1.0 update: exp(-nb_people / capacity) min: 0.1;
-	aspect default { draw (shape + 5) color: #white; }
+	aspect default { draw shape  color: #white width: 2; }
 }
 
 species PuntoControl {
@@ -289,15 +238,8 @@ species PuntoControl {
 	float  tarifa_vigente    <- 0.0;
 	bool   modo_peaje_activo <- false;
 
-	// [EB] Descomentar en EB_PeajeHorario.gaml
-	// reflex cobrar when: modo_peaje_activo {
-	//     bool pico <- (minuto_actual>=HORA_PICO_MAT_INICIO and minuto_actual<=HORA_PICO_MAT_FIN)
-	//              or (minuto_actual>=HORA_PICO_VES_INICIO  and minuto_actual<=HORA_PICO_VES_FIN);
-	//     tarifa_vigente <- pico ? TARIFA_PICO : TARIFA_VALLE;
-	// }
-
 	aspect default {
-		draw square(60) color: (modo_peaje_activo ? #red : #limegreen) border: #black depth: 8;
+		draw square(60) color: #limegreen border: #black depth: 8;
 		draw "C" + id_control at: location + {0, 0, 10} color: #white font: font("Arial", 12, #bold);
 	}
 }
@@ -310,8 +252,6 @@ species EstacionMetro {
 	bool   saturada          <- false update: (pasajeros_espera > capacidad_hora * 0.9);
 
 	reflex salida_tren when: (cycle mod 30 = 0) {
-		// FIX: usar ciclos en lugar de minuto_actual mod 5 para trigger
-		// 30 ciclos × 10 s = 300 s ≈ 5 minutos simulados
 		int abordan       <- min(pasajeros_espera, 300);
 		pasajeros_espera  <- pasajeros_espera - abordan;
 		modal_shift_total <- modal_shift_total + abordan;
@@ -326,31 +266,24 @@ species EstacionMetro {
 
 species ConductorBDI skills: [moving] {
 
-	// ── Creencias ─────────────────────────────────────────────────────────
+	// ── Atributos Generales ──────────────────────────────────────────────────
 	string nse               <- "MEDIO";
 	float  wtp               <- 1.50;
 	float  w_tiempo          <- 0.35;
 	float  w_costo           <- 0.35;
 	float  w_comodidad       <- 0.30;
-	bool   restringido_placa <- false;
 	bool   metro_accesible   <- false;
 	float  tarifa_percibida  <- 0.0;
-	// FIX: speed en m/ciclo (step=10s). 5 m/s × 10s = 50 m/ciclo base.
-	// Rango: 30–110 m/ciclo ≈ 11–40 km/h
 	float  speed             <- (rnd(5.0) + 3.0) * 10.0;
-
-	// ── Percepción de congestión ──────────────────────────────────────────
-	// nivel_congestion ∈ [0.0, 1.0]: promedio de ocupación de vías cercanas.
-	// 0.0 = vías libres; 1.0 = todas las vías cercanas al límite de capacidad.
-	// Se recalcula cada ciclo para que el agente "sienta" el tráfico en tiempo real.
 	float  nivel_congestion  <- 0.0;
-
-	// umbral_congestion: sensibilidad individual al tráfico.
-	// NSE ALTO → más impaciente (0.40); NSE BAJO → más tolerante (0.70).
-	// El agente delibera cuando nivel_congestion supera su umbral personal.
 	float  umbral_congestion <- 0.55;
 
-	// ── Estado ────────────────────────────────────────────────────────────
+	// ── Atributos Heterogéneos Estructurados V2 ──────────────────────────────
+	string tipo_vehiculo        <- "AUTO"; // MOTO | AUTO | SUV | BUS | CARGA
+	float  factor_capacidad_via <- 1.0;
+	float  tarifa_efectiva      <- 0.0;
+	bool   exonerado_peaje      <- false;
+
 	point  destino           <- nil;
 	string intencion         <- "RUTA_DIRECTA";
 	bool   decision_tomada   <- false;
@@ -358,43 +291,65 @@ species ConductorBDI skills: [moving] {
 	point  pos_anterior      <- nil;
 
 	init {
+		// FIX DEFINITIVO: Un solo ciclo unificado de inicialización para evitar pisar variables
 		float r <- rnd(1.0);
 		if (r < PCT_NSE_ALTO) {
 			nse <- "ALTO";  wtp <- WTP_NSE_ALTO;
 			w_tiempo <- 0.35; w_costo <- 0.15; w_comodidad <- 0.50;
-			speed <- speed + 30.0;   // +3 m/s → +30 m/ciclo
-			// NSE ALTO: impaciente, reacciona antes a la congestión
+			speed <- speed + 30.0;
 			umbral_congestion <- 0.40;
 		} else if (r < PCT_NSE_ALTO + PCT_NSE_MEDIO) {
 			nse <- "MEDIO"; wtp <- WTP_NSE_MEDIO;
 			w_tiempo <- 0.35; w_costo <- 0.35; w_comodidad <- 0.30;
-			// NSE MEDIO: sensibilidad estándar
 			umbral_congestion <- 0.55;
 		} else {
 			nse <- "BAJO";  wtp <- WTP_NSE_BAJO;
 			w_tiempo <- 0.20; w_costo <- 0.65; w_comodidad <- 0.15;
-			speed <- max(10.0, speed - 10.0);  // mín 1 m/s → 10 m/ciclo
-			// NSE BAJO: tolera más el tráfico (sin costo de alternativas)
+			speed <- max(10.0, speed - 10.0);
 			umbral_congestion <- 0.70;
 		}
-		restringido_placa <- (rnd(1.0) < PCT_RESTRICCION_PLACA)
-		                   and (dia_semana >= 1 and dia_semana <= 5);
+		
 		metro_accesible   <- rnd(1.0) < 0.60;
 		pos_anterior      <- location;
+
+		// Asignación de propiedades físicas y de comportamiento por tipo de vehículo
+		if (tipo_vehiculo = "MOTO") {
+			speed                <- speed + 40.0;   
+			factor_capacidad_via <- 0.3;          
+			exonerado_peaje      <- true;            
+			umbral_congestion    <- max(0.20, umbral_congestion - 0.15); 
+		} else if (tipo_vehiculo = "AUTO") {
+			factor_capacidad_via <- 1.0;          
+		} else if (tipo_vehiculo = "SUV") {
+			speed                <- max(20.0, speed - 10.0); 
+			factor_capacidad_via <- 1.5;          
+			wtp                  <- wtp * 1.3;       
+		} else if (tipo_vehiculo = "BUS") {
+			speed                <- max(15.0, speed - 35.0); 
+			factor_capacidad_via <- 3.0;          
+			exonerado_peaje      <- true;            
+			metro_accesible      <- false;           
+			nse                  <- "BAJO";          
+		} else if (tipo_vehiculo = "CARGA") {
+			speed                <- max(10.0, speed - 40.0); 
+			factor_capacidad_via <- 2.5;          
+			metro_accesible      <- false;           
+			nse                  <- "BAJO";
+		}
 	}
 
-	// ── Percepción ────────────────────────────────────────────────────────
-	// Se ejecuta siempre, incluso cuando ya se tomó una decisión,
-	// para que nivel_congestion esté actualizado en cada ciclo.
 	reflex percibir {
-		// 1. Tarifa del peaje (solo relevante en EB; en E0 siempre será 0.0)
 		ask PuntoControl at_distance 300 {
 			myself.tarifa_percibida <- self.tarifa_vigente;
 		}
 
-		// 2. Congestión percibida: fracción de vías cercanas saturadas.
-		//    Se miden las road dentro de 200 unidades del agente.
-		//    speed_coeff ≤ 0.5 indica que la vía está a más del 50% de saturación.
+		// En E0 las tarifas serán siempre 0.0, pero se mantiene la estructura lógica
+		if (exonerado_peaje) {
+			tarifa_efectiva <- 0.0;
+		} else {
+			tarifa_efectiva <- tarifa_percibida; 
+		}
+
 		list<road> vias_cercanas <- road at_distance 200;
 		if not empty(vias_cercanas) {
 			int saturadas      <- length(vias_cercanas where (each.speed_coeff <= 0.5));
@@ -404,37 +359,22 @@ species ConductorBDI skills: [moving] {
 		}
 	}
 
-	// ── Deliberación BDI ──────────────────────────────────────────────────
-	// Trigger 1 — Peaje activo: el agente percibe una tarifa > 0 (escenario EB).
-	// Trigger 2 — Congestión alta: el nivel supera el umbral personal del agente.
-	// En E0 solo el trigger 2 se activa; en EB ambos pueden coincidir.
-	reflex deliberar when: not decision_tomada
-	                   and (tarifa_percibida > 0 or nivel_congestion >= umbral_congestion) {
+	// Deliberación gatillada puramente por rebasar el nivel tolerable de congestión
+	reflex deliberar when: not decision_tomada and (nivel_congestion >= umbral_congestion) {
 		do decidir();
 	}
 
 	action decidir {
-		// Prioridad 1: restricción de placa vigente
-		if (restringido_placa and minuto_actual >= RESTRICCION_INICIO
-		    and minuto_actual <= RESTRICCION_FIN) {
-			count_restringidos <- count_restringidos + 1;
-			chart_restringidos <- chart_restringidos + 1;
-			intencion <- metro_accesible ? "METRO" : "REROUTEAR";
-			// Contabilizar desvío forzado por NSE
-			if intencion = "METRO" {
-				if      (nse = "ALTO")  { count_metro_alto  <- count_metro_alto  + 1; }
-				else if (nse = "MEDIO") { count_metro_medio <- count_metro_medio + 1; }
-				else                    { count_metro_bajo  <- count_metro_bajo  + 1; }
-			} else {
-				if      (nse = "ALTO")  { count_rerouta_alto  <- count_rerouta_alto  + 1; }
-				else if (nse = "MEDIO") { count_rerouta_medio <- count_rerouta_medio + 1; }
-				else                    { count_rerouta_bajo  <- count_rerouta_bajo  + 1; }
-			}
-			decision_tomada <- true;
+		// Comportamiento del transporte público masivo (Bus sigue su ruta directa pase lo que pase)
+		if (tipo_vehiculo = "BUS") {
+			intencion          <- "RUTA_DIRECTA";
+			count_ruta_directa <- count_ruta_directa + 1;
+			chart_ruta_directa <- chart_ruta_directa + 1;
+			count_directo_bajo  <- count_directo_bajo + 1;
+			decision_tomada    <- true;
 			return;
 		}
 
-		// Prioridad 2: función de utilidad multi-criterio
 		float ud <- u_directa();
 		float ur <- u_reroutear();
 		float um <- u_metro();
@@ -443,7 +383,6 @@ species ConductorBDI skills: [moving] {
 			intencion          <- "RUTA_DIRECTA";
 			count_ruta_directa <- count_ruta_directa + 1;
 			chart_ruta_directa <- chart_ruta_directa + 1;
-			recaudacion_acum   <- recaudacion_acum + tarifa_percibida;
 			if      (nse = "ALTO")  { count_directo_alto  <- count_directo_alto  + 1; }
 			else if (nse = "MEDIO") { count_directo_medio <- count_directo_medio + 1; }
 			else                    { count_directo_bajo  <- count_directo_bajo  + 1; }
@@ -454,8 +393,11 @@ species ConductorBDI skills: [moving] {
 			if      (nse = "ALTO")  { count_metro_alto  <- count_metro_alto  + 1; }
 			else if (nse = "MEDIO") { count_metro_medio <- count_metro_medio + 1; }
 			else                    { count_metro_bajo  <- count_metro_bajo  + 1; }
-			ask (EstacionMetro closest_to self) {
-				if not saturada { pasajeros_espera <- pasajeros_espera + 1; }
+			
+			if not empty(EstacionMetro) {
+			    ask (EstacionMetro closest_to self) {
+			        if not saturada { pasajeros_espera <- pasajeros_espera + 1; }
+			    }
 			}
 		} else {
 			intencion       <- "REROUTEAR";
@@ -468,29 +410,20 @@ species ConductorBDI skills: [moving] {
 		decision_tomada <- true;
 	}
 
-	// u_directa: utilidad de seguir la ruta original.
-	// En E0 (sin peaje): uc = 1.0 → costo neutral.
-	// En EB (con peaje): uc = 1/tarifa → baja si la tarifa sube.
-	// La congestión penaliza mediante speed real del agente.
 	float u_directa {
-		if tarifa_percibida > wtp { return -0.5; }
-		float uc <- (tarifa_percibida > 0) ? (1.0 / tarifa_percibida) : 1.0;
-		// Penalización adicional por congestión percibida
+		if tarifa_efectiva > wtp { return -0.5; }
+		float uc <- (tarifa_efectiva > 0) ? (1.0 / tarifa_efectiva) : 1.0;
 		float congestion_penalty <- 1.0 - (nivel_congestion * 0.5);
 		return w_tiempo * (1.0 / max(1.0, speed)) + w_costo * uc
 		     + w_comodidad * (0.90 * congestion_penalty);
 	}
 
-	// u_reroutear: utilidad de tomar una ruta alternativa más larga.
-	// La congestión alta lo hace más atractivo (evita el embotellamiento).
 	float u_reroutear {
 		float congestion_bonus <- nivel_congestion * 0.30;
 		return w_tiempo * (1.0 / max(1.0, speed * 0.65)) + w_costo * 1.0
 		     + w_comodidad * (0.60 + congestion_bonus);
 	}
 
-	// u_metro: utilidad del transporte público.
-	// La congestión alta lo hace más atractivo para quienes tienen acceso.
 	float u_metro {
 		if not metro_accesible { return 0.0; }
 		float congestion_bonus <- nivel_congestion * 0.20;
@@ -498,22 +431,9 @@ species ConductorBDI skills: [moving] {
 		     + w_comodidad * (0.70 + congestion_bonus);
 	}
 
-	// ── Movimiento ────────────────────────────────────────────────────────
 	reflex mover when: destino != nil {
-		// Agente restringido por placa: cambia destino y espera
-		if (restringido_placa and minuto_actual >= RESTRICCION_INICIO
-		    and minuto_actual <= RESTRICCION_FIN and intencion != "METRO") {
-			if (cycle mod 300 = 0) {
-				list<road> pool <- empty(roads_conectadas) ? list(road) : roads_conectadas;
-				destino <- any_location_in(one_of(pool));
-			}
-			return;
-		}
-
 		do goto target: destino on: road_network move_weights: road_weights speed: speed;
 
-		// Detectar atasco: no avanzó significativamente en este ciclo
-		// Umbral: menos de 1 m (agente realmente inmóvil, no solo lento)
 		if (pos_anterior != nil and location distance_to pos_anterior < 1.0) {
 			t_sin_avanzar <- t_sin_avanzar + 1;
 		} else {
@@ -521,7 +441,6 @@ species ConductorBDI skills: [moving] {
 		}
 		pos_anterior <- copy(location);
 
-		// Llegó al destino (dentro de 150 m) o lleva 1200 ciclos sin avanzar (20 min sim)
 		if (location distance_to destino < 150 or t_sin_avanzar > 1200) {
 			if intencion = "RUTA_DIRECTA" {
 				count_ruta_directa <- count_ruta_directa + 1;
@@ -532,8 +451,9 @@ species ConductorBDI skills: [moving] {
 			decision_tomada  <- false;
 			intencion        <- "RUTA_DIRECTA";
 			tarifa_percibida <- 0.0;
+			tarifa_efectiva  <- 0.0;   
 			t_sin_avanzar    <- 0;
-		}
+					}
 	}
 
 	reflex nuevo_destino when: destino = nil {
@@ -543,94 +463,95 @@ species ConductorBDI skills: [moving] {
 	}
 
 	aspect default {
+		// Color base estructural por Tipo de Vehículo
 		rgb col <- #gray;
-		if      (intencion = "RUTA_DIRECTA") { col <- #dodgerblue; }
-		else if (intencion = "REROUTEAR")    { col <- #orange;     }
-		else if (intencion = "METRO")        { col <- #limegreen;  }
-		if (restringido_placa and minuto_actual >= RESTRICCION_INICIO
-		    and minuto_actual <= RESTRICCION_FIN) { col <- #red; }
-		draw circle(20) color: col;
+		if      (tipo_vehiculo = "MOTO")  { col <- #deepskyblue; }
+		else if (tipo_vehiculo = "AUTO")  { col <- #dodgerblue;  }
+		else if (tipo_vehiculo = "SUV")   { col <- #mediumpurple;}
+		else if (tipo_vehiculo = "BUS")   { col <- #limegreen;   }
+		else if (tipo_vehiculo = "CARGA") { col <- #sienna;      }
+
+		// Enmascaramiento visual por Desvío Colaborativo Dinámico (BDI)
+		if (decision_tomada) {
+			if      (intencion = "REROUTEAR") { col <- #orange; }
+			else if (intencion = "METRO")     { col <- #gold;   }
+		}
+
+		// Dimensionamiento físico por Escala V2
+		float sz <- 8.0;
+		if      (tipo_vehiculo = "MOTO")  { sz <- 5.0;  }
+		else if (tipo_vehiculo = "SUV")   { sz <- 10.0; }
+		else if (tipo_vehiculo = "BUS")   { sz <- 14.0; }
+		else if (tipo_vehiculo = "CARGA") { sz <- 12.0; }
+		draw circle(sz) at: location + {0, 0, 5} color: col border: #black;
 	}
 }
 
-experiment "Experiment traffic" type: gui autorun: true {
+// ── Experimento EB ─────────────────────────────────────────────────────────────
+experiment "Simulacion Base Heterogenea" type: gui autorun: true {
 
-	parameter "Conductores"              var: NB_CONDUCTORES min: 50  max: 500 step: 50   category: "Sim";
-	parameter "Día semana (1=Lun,7=Dom)" var: dia_semana     min: 1   max: 7              category: "Sim";
-	parameter "Tarifa pico USD [EB]"     var: TARIFA_PICO    min: 0.0 max: 3.0 step: 0.25 category: "[EB]";
+	// Categoría: Vehículos
+	parameter "Motos (~15 %)"              var: NB_MOTOS   min: 0  max: 150 step: 15  category: "Vehículos";
+	parameter "Autos particulares (~55 %)" var: NB_AUTOS   min: 0  max: 300 step: 25  category: "Vehículos";
+	parameter "SUV / 4x4 (~15 %)"         var: NB_SUVS    min: 0  max: 150 step: 15  category: "Vehículos";
+	parameter "Buses / T. público (~10 %)" var: NB_BUSES   min: 0  max: 100 step: 10  category: "Vehículos";
+	parameter "Vehículos de carga (~5 %)"  var: NB_CARGAS  min: 0  max: 50  step: 5   category: "Vehículos";
+	
+	// Categoría: Simulación
+	parameter "Día semana (1=Lun,7=Dom)"   var: dia_semana min: 1  max: 7             category: "Sim";
+
+	// ── AGREGADO: Parámetro de Tarifa Nominal para mantener consistencia con EB ──
+parameter "Tarifa AUTO pico USD [EB]" var: TARIFA_PICO_AUTO min: 0.5 max: 3.0 step: 0.25 category: "[EB nominal]";
 
 	float minimum_cycle_duration <- 0.01;
 
 	output synchronized: true {
 
-		display "Mapa La Carolina" type: 3d axes: false
+		display "Mapa La Carolina — Base Heterogénea" type: 3d axes: false
 		        background: rgb(25, 25, 25) toolbar: false {
 			overlay position: {50 #px, 50 #px} size: {1 #px, 1 #px} background: #black border: #black rounded: false {
-				draw "SMA — La Carolina" at: {0, 0} anchor: #top_left color: #white
+				draw "SMA — La Carolina [E0 Heterogéneo]" at: {0, 0} anchor: #top_left color: #orange
 				     font: font("Arial", 16, #bold);
 				int hh <- int(minuto_actual / 60);
 				int mm <- minuto_actual mod 60;
 				draw "Hora: " + hh + ":" + (mm < 10 ? "0" : "") + mm + (es_hora_pico ? "  ◀ PICO" : "")
 				     at: {0, 40 #px} anchor: #top_left
 				     color: (es_hora_pico ? #orange : #white) font: font("Arial", 12, #bold);
-				draw "Vel: " + round(velocidad_media) + " km/h"
+				draw "Vel Media: " + velocidad_media + " km/h"
 				     at: {0, 70 #px} anchor: #top_left color: #white font: font("Arial", 12, #bold);
 
 				float y <- 110 #px;
-				loop lbl over: ["Ruta directa", "Reroutan", "→ Metro", "Restringidos (placa)"] {
-					rgb c <- #red;
-					if      (lbl = "Ruta directa") { c <- #dodgerblue; }
-					else if (lbl = "Reroutan")     { c <- #orange;     }
-					else if (lbl = "→ Metro")      { c <- #limegreen;  }
-					draw square(28 #px) at: {14 #px, y} color: rgb(c, 0.85);
-					draw lbl at: {48 #px, y} anchor: #left_center color: #white font: font("Arial", 11, #bold);
-					y <- y + 36 #px;
+				loop item over: [["Moto", #deepskyblue], ["Auto", #dodgerblue], ["SUV / 4x4", #mediumpurple], ["Bus", #limegreen], ["Carga", #sienna]] {
+					draw circle(10 #px) at: {14 #px, y} color: rgb(rgb(item[1]), 0.90);
+					draw string(item[0]) at: {34 #px, y} anchor: #left_center color: #white font: font("Arial", 10, #bold);
+					y <- y + 26 #px;
 				}
-				y <- y + 16 #px;
-				loop lbl over: ["Vías", "Control (sin cobro)", "Control (cobrando)", "Estación Metro"] {
-					rgb c <- #royalblue;
-					if      (lbl = "Vías")                { c <- #white;    }
-					else if (lbl = "Control (sin cobro)") { c <- #limegreen; }
-					else if (lbl = "Control (cobrando)")  { c <- #red;       }
-					draw square(28 #px) at: {14 #px, y} color: rgb(c, 0.85);
-					draw lbl at: {48 #px, y} anchor: #left_center color: #white font: font("Arial", 11, #bold);
-					y <- y + 36 #px;
+				y <- y + 10 #px;
+				draw "— Decisión Alternativa BDI —" at: {14 #px, y} anchor: #left_center color: rgb(180, 180, 180) font: font("Arial", 9, #plain);
+				y <- y + 20 #px;
+				loop item over: [["Reroutan (Vía Secund)", #orange], ["→ T. Metro (Modal)", #gold]] {
+					draw square(18 #px) at: {14 #px, y} color: rgb(rgb(item[1]), 0.85);
+					draw string(item[0]) at: {34 #px, y} anchor: #left_center color: #white font: font("Arial", 10, #bold);
+					y <- y + 26 #px;
 				}
 			}
 			light #ambient intensity: 130;
-			species road         refresh: false;
+			species road refresh: false;
 			species PuntoControl;
 			species EstacionMetro;
 			species ConductorBDI;
 		}
 
-		display "Flujo vehicular" {
-			chart "Conductores en la red" type: series background: rgb(25, 25, 25) color: #white {
-				data "Activos"
-				     value: length(ConductorBDI where (each.t_sin_avanzar < 300
-				             and not (each.restringido_placa
-				             and minuto_actual >= RESTRICCION_INICIO
-				             and minuto_actual <= RESTRICCION_FIN)))
-				     color: #dodgerblue;
-				data "Restringidos (placa)"
-				     value: length(ConductorBDI where (each.restringido_placa
-				             and minuto_actual >= RESTRICCION_INICIO
-				             and minuto_actual <= RESTRICCION_FIN))
-				     color: #red;
-			}
-		}
-
 		display "Decisiones BDI" {
-			chart "Distribución de decisiones" type: pie background: rgb(25, 25, 25) color: #white {
+			chart "Distribución de Decisiones Operativas" type: pie background: rgb(25, 25, 25) color: #white {
 				data "Ruta directa" value: chart_ruta_directa color: #dodgerblue;
 				data "Reroutan"     value: chart_reroutean     color: #orange;
-				data "→ Metro"      value: chart_metro         color: #limegreen;
-				data "Restringidos" value: chart_restringidos  color: #red;
+				data "→ Metro"      value: chart_metro         color: #gold;
 			}
 		}
 
 		display "Velocidad media" {
-			chart "Velocidad media (km/h)" type: series background: rgb(25, 25, 25) color: #white {
+			chart "Velocidad media emergente (km/h)" type: series background: rgb(25, 25, 25) color: #white {
 				data "km/h" value: velocidad_media color: #limegreen;
 			}
 		}
