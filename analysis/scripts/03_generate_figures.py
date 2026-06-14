@@ -20,11 +20,18 @@ Autores: Equipo SMA Quito — UCE Sistemas Colaborativos 2026
 ─────────────────────────────────────────────────────────────────────────────
 """
 
+import sys
 import pandas as pd
 import numpy as np
 import matplotlib.pyplot as plt
 import matplotlib.patches as mpatches
 from pathlib import Path
+
+# Windows: forzar UTF-8 en stdout (símbolos →/✓ rompen la consola cp1252).
+try:
+    sys.stdout.reconfigure(encoding="utf-8")
+except (AttributeError, ValueError):
+    pass
 
 # ── Configuración global de matplotlib para el paper ──────────────────────
 plt.rcParams.update({
@@ -63,7 +70,8 @@ def cargar_datos() -> tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame]:
         raise FileNotFoundError(f"Ejecutar 01_process_results.py primero. No encontrado: {ruta}")
 
     df = pd.read_csv(ruta)
-    e0 = df[df["escenario"] == "E0"].copy()
+    # §3.3 fix: el paso 01 etiqueta el baseline como "E0_HET" (no "E0").
+    e0 = df[df["escenario"] == "E0_HET"].copy()
     eb = df[df["escenario"] == "EB"].copy()
     return df, e0, eb
 

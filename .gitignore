@@ -22,6 +22,11 @@ analysis/results/*.csv
 analysis/figures/*.png
 analysis/figures/*.pdf
 
+# ── GIS pesado no usado por el modelo (>50 MB) ────────────────────────────
+# El modelo solo carga red_vial_la_carolina.shp; estas capas QGIS no se versionan
+gama/includes/casas_carolina.*
+gama/includes/calles_carolina.*
+
 # ── GAMA Platform ─────────────────────────────────────────────────────────
 # Archivos internos del workspace de Eclipse/GAMA
 gama/.settings/
@@ -29,6 +34,10 @@ gama/snapshots/
 gama/**/*.bak
 gama/**/*.log
 *.gaml.bak
+
+.metadata/
+*.bak_gaml
+.built_in_models_*
 
 # ── Outputs de simulación ─────────────────────────────────────────────────
 # Incluir los CSV de ejemplo (run1) pero ignorar ejecuciones adicionales
@@ -47,6 +56,7 @@ desktop.ini
 .idea/
 .vscode/
 *.code-workspace
+CLAUDE.md
 
 # ── LaTeX / Overleaf ──────────────────────────────────────────────────────
 *.aux

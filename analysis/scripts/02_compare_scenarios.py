@@ -18,10 +18,17 @@ Autores: Equipo SMA Quito — UCE Sistemas Colaborativos 2026
 ─────────────────────────────────────────────────────────────────────────────
 """
 
+import sys
 import pandas as pd
 import numpy as np
 from pathlib import Path
 from scipy import stats
+
+# Windows: forzar UTF-8 en stdout (símbolos →/✓/± rompen la consola cp1252).
+try:
+    sys.stdout.reconfigure(encoding="utf-8")
+except (AttributeError, ValueError):
+    pass
 
 # ── Rutas ──────────────────────────────────────────────────────────────────
 ROOT        = Path(__file__).resolve().parents[2]
@@ -47,8 +54,11 @@ def cargar_datos() -> tuple[pd.DataFrame, pd.DataFrame]:
         raise FileNotFoundError(ruta)
 
     df = pd.read_csv(ruta)
-    e0 = df[df["escenario"] == "E0"].copy()
+    # §3.3 fix: el paso 01 etiqueta el baseline como "E0_HET" (no "E0").
+    e0 = df[df["escenario"] == "E0_HET"].copy()
     eb = df[df["escenario"] == "EB"].copy()
+    if e0.empty:
+        print("[AVISO] 0 filas E0_HET en combined.csv — ¿corriste 01 con datos reales?")
     return e0, eb
 
 
@@ -69,7 +79,9 @@ def calcular_metricas_globales(df: pd.DataFrame) -> dict:
         "pct_metro_pico":           pico["pct_metro"].mean() if len(pico) > 0 else np.nan,
         "pct_reroutean_promedio":   df["pct_reroutean"].mean(),
         "flujo_externo_promedio":   df["flujo_externo"].mean(),
-        "recaudacion_total":        df["recaudacion_acum_usd"].sum(),
+        # recaudacion_acum_usd es un ACUMULADOR monótono: el total es el valor
+        # final del run (max), no la suma de todos los intervalos.
+        "recaudacion_total":        df["recaudacion_acum_usd"].max(),
     }
 
 
@@ -191,7 +203,7 @@ def generar_tabla_benchmark(m_e0: dict, m_eb: dict) -> pd.DataFrame:
             "Indicador": "Mejora de velocidad media (hora pico)",
             "Londres 2003": f"+{BENCHMARK_LONDRES['mejora_velocidad_pct']}%",
             "Meta Quito": "> 0%",
-            "Modelo (EB vs E0)": f"+{round(mejora_velocidad_modelo, 1)}%" if (mejora_velocidad_modelo and not np.isnan(mejora_velocidad_modelo)) else "N/A",
+            "Modelo (EB vs E0)": f"{mejora_velocidad_modelo:+.1f}%" if (mejora_velocidad_modelo and not np.isnan(mejora_velocidad_modelo)) else "N/A",
             "¿Cumple?": "SÍ ✓" if (mejora_velocidad_modelo and mejora_velocidad_modelo > 0) else "NO",
         },
         {
@@ -220,7 +232,20 @@ def imprimir_tabla_latex(df: pd.DataFrame, titulo: str):
     """
     print(f"\n% ── {titulo} ──")
     print("% Generado por 02_compare_scenarios.py — SMA Quito UCE 2026")
-    print(df.to_latex(index=False, escape=False, float_format="{:.2f}".format))
+    try:
+        print(df.to_latex(index=False, escape=False, float_format="{:.2f}".format))
+    except (ImportError, ModuleNotFoundError):
+        # pandas.to_latex enruta por Styler y requiere jinja2 (dependencia opcional).
+        # Fallback: construir el tabular a mano para no bloquear el pipeline.
+        cols = list(df.columns)
+        print("\\begin{tabular}{" + "l" * len(cols) + "}")
+        print("\\hline")
+        print(" & ".join(str(c) for c in cols) + " \\\\")
+        print("\\hline")
+        for _, row in df.iterrows():
+            print(" & ".join(str(v) for v in row.values) + " \\\\")
+        print("\\hline")
+        print("\\end{tabular}")
 
 
 def main():

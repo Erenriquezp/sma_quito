@@ -1,0 +1,9 @@
+# Pipeline de análisis SMA Quito — dependencias Python
+# Instalar con:  pip install -r requirements.txt
+pandas>=2.0
+numpy>=1.24
+matplotlib>=3.7
+scipy>=1.10
+# Opcional: habilita el formato bonito de DataFrame.to_latex (02_compare_scenarios.py).
+# Si falta, el script usa un fallback manual y no se rompe.
+jinja2>=3.1

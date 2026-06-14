@@ -288,7 +288,7 @@ Boletín EPMMQ #2, feb 2025
 
 Estaciones zona de estudio 
 
-El Labrador (norte) e Iñaquito (sur) — conectan toda la zona La Carolina 
+Iñaquito - La Carolina — conectan toda la zona La Carolina 
 
 Metro de Quito / Wikipedia 
 
@@ -334,7 +334,7 @@ Puntos de control
 
 Estaciones Metro 
 
-El Labrador (norte del polígono) e Iñaquito (sur del polígono) 
+Iñaquito (norte del polígono) y La Carolina (sur del polígono) 
 
  
 
@@ -368,7 +368,7 @@ Estación de Metro
 
 Reactivo / Pasivo 
 
-2 (El Labrador, Iñaquito) 
+2 (Iñaquito, la Carolina) 
 
 Atractor de modal shift. Tiene capacidad de absorción limitada; genera congestión propia si se satura. 
 
@@ -586,7 +586,7 @@ Descarga de la red vial OSM del sector La Carolina mediante QuickOSM (plugin de 
 
 Limpieza topológica: eliminación de nodos duplicados, corrección de sentidos viales y recorte al bounding box del polígono de cobro. 
 
-Adición de capas: polígono de cobro (5 puntos de control), estaciones Metro (El Labrador, Iñaquito), zonas de densidad poblacional INEC. 
+Adición de capas: polígono de cobro (5 puntos de control), estaciones Metro (Iñaquito, La Carolina), zonas de densidad poblacional INEC. 
 
 Exportación a GeoJSON (EPSG:32717 — UTM zona 17S para coordenadas métricas precisas en Quito). 
 

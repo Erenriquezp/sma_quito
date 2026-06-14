@@ -1,1 +1,4 @@
-escenario,minuto,hora,es_hora_pico,nb_conductores,velocidad_media_kmh,pct_ruta_directa,pct_reroutean,pct_metro,modal_shift_acum,directo_nse_alto,directo_nse_medio,directo_nse_bajo,metro_nse_alto,metro_nse_medio,metro_nse_bajo,rerouta_nse_alto,rerouta_nse_medio,rerouta_nse_bajo
+escenario,minuto,hora,es_hora_pico,nb_conductores,velocidad_media_kmh,pct_ruta_directa,pct_reroutean,pct_metro,modal_shift_acum,nb_restringidos_placa,directo_nse_alto,directo_nse_medio,directo_nse_bajo,metro_nse_alto,metro_nse_medio,metro_nse_bajo,rerouta_nse_alto,rerouta_nse_medio,rerouta_nse_bajo
+E0_HET,375,6:15,false,300,30.8,84.3,7.3,8.3,469,62,37,114,102,3,12,10,3,9,10
+E0_HET,390,6:30,false,300,31.9,83.7,7.3,9.0,1156,62,38,111,102,2,15,10,3,9,10
+E0_HET,405,6:45,false,300,32.2,82.3,7.3,10.3,1896,62,37,109,101,3,17,11,3,9,10

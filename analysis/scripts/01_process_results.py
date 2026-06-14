@@ -25,9 +25,17 @@ Autores: Equipo SMA Quito — UCE Sistemas Colaborativos 2026
 ─────────────────────────────────────────────────────────────────────────────
 """
 
+import sys
 import pandas as pd
 import numpy as np
 from pathlib import Path
+
+# Windows: la consola por defecto (cp1252) no puede imprimir símbolos como →/✓.
+# Forzar UTF-8 en stdout evita UnicodeEncodeError al ejecutar el pipeline.
+try:
+    sys.stdout.reconfigure(encoding="utf-8")
+except (AttributeError, ValueError):
+    pass
 
 # ── Rutas ──────────────────────────────────────────────────────────────────
 ROOT        = Path(__file__).resolve().parents[2]
@@ -176,6 +184,33 @@ def corregir_equidad_buses(df: pd.DataFrame) -> pd.DataFrame:
 
 
 # ─────────────────────────────────────────────────────────────────────────────
+def agregar_columnas_derivadas(df: pd.DataFrame) -> pd.DataFrame:
+    """
+    Paso 4: deriva las columnas de flujo que los scripts 02/03 esperan pero que
+    GAMA NO exporta directamente. El CSV no tiene un contador de "vehículos de
+    paso"; se aproxima a partir de los contadores de decisión por NSE:
+
+      flujo_poligono : decisiones de RUTA_DIRECTA por intervalo (paso por la zona).
+      flujo_externo  : decisiones de REROUTEAR por intervalo (desplazamiento a
+                       vías periféricas — proxy de desplazamiento periférico).
+      pct_pagan      : en EB, la cuota modal de ruta directa equivale a quienes
+                       pagan el peaje en hora pico; se mapea a pct_ruta_directa.
+
+    Nota metodológica: estos contadores reflejan EVENTOS DE DECISIÓN de los
+    agentes que deliberaron en el intervalo (no el padrón completo de la flota),
+    por lo que deben leerse como proxies de flujo, no como conteos absolutos.
+    """
+    df["flujo_poligono"] = (df["directo_nse_alto"]
+                          + df["directo_nse_medio"]
+                          + df["directo_nse_bajo"])
+    df["flujo_externo"]  = (df["rerouta_nse_alto"]
+                          + df["rerouta_nse_medio"]
+                          + df["rerouta_nse_bajo"])
+    df["pct_pagan"] = df["pct_ruta_directa"]
+    return df
+
+
+# ─────────────────────────────────────────────────────────────────────────────
 def limpiar_dataframe(df: pd.DataFrame, escenario: str) -> pd.DataFrame:
     """
     Tipado, columnas calculadas y limpieza general.
@@ -214,6 +249,9 @@ def limpiar_dataframe(df: pd.DataFrame, escenario: str) -> pd.DataFrame:
 
     # Corrección de equidad NSE (elimina contribución de buses)
     df = corregir_equidad_buses(df)
+
+    # Columnas de flujo derivadas que consumen 02/03 (GAMA no las exporta)
+    df = agregar_columnas_derivadas(df)
 
     # Eliminar filas con datos críticos faltantes
     df = df.dropna(subset=["minuto", "velocidad_media_kmh"])
