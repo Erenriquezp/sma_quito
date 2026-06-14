@@ -56,16 +56,6 @@ hoy solo existen corridas parciales de la mañana.
 - **Velocidad media** estimada por coeficiente de congestión dentro del polígono; el cambio
   modal al Metro descongestiona la vía.
 
-### Datos geoespaciales y visualización
-- Coordenadas reales (UTM 17S) de C1–C5, estaciones y polígono de cobro, convertidas en
-  runtime con `to_GAMA_CRS(..., "EPSG:32717")` para calzar con la red (GAMA normaliza el
-  shapefile al cargarlo). *Pendiente de verificación visual — ver §3.*
-- Displays depurados: se quitaron las gráficas casi lineales (velocidad, recaudación,
-  reparto modal en el tiempo) que se analizarán mejor desde Python. Quedan el **mapa**
-  (polígono dibujado, compuertas como frontera, conductores diferenciados dentro/fuera,
-  HUD con jerarquía clara), el **pastel de decisiones BDI** y, en EB, **equidad NSE** y el
-  **estado del GestorAMT**.
-
 ### Pipeline Python (`analysis/scripts/`)
 - Corre `01→02→03` de punta a punta sobre datos reales (sin caer en sintéticos).
 - Etiqueta unificada `E0_HET`; columnas de flujo derivadas de los contadores NSE reales;
@@ -124,7 +114,6 @@ zonas de cobro) manteniendo el mismo comportamiento del SMA. Requisitos:
 
 | # | Tema | Severidad | Acción |
 |---|---|---|---|
-| C1 | **Verificar el fix de coordenadas (CRS).** Las posiciones reales se transforman con `to_GAMA_CRS` pero no se ha confirmado visualmente que C1–C5 y las estaciones caigan sobre las intersecciones reales. | 🔴 Verificar | Recargar el modelo en GAMA. Si quedan desplazadas de forma uniforme, ajustar `CRS_DATOS`; si la red no tuviera `.prj`, declarar el CRS al cargar el shapefile. |
 | C2 | **Riesgo de datos sintéticos silenciosos.** `01_process_results.py` inventa datos calibrados si falta un CSV, lo que puede producir figuras 100 % sintéticas sin que se note. | 🟠 Media | Añadir flag `--strict` que aborte si algún escenario cae en sintético y marca de agua "DATOS SINTÉTICOS" en las figuras en ese modo. |
 | C3 | **Rama `SUSPENDER` del GestorAMT es código muerto.** Con capacidad 8000/estación y ≤300 agentes, la saturación nunca llega a 0.85. | 🔵 Baja | Bajar la capacidad a la escala de agentes simulados, o documentar que es ilustrativa. |
 | C4 | **Rendimiento si se sube a 500 agentes.** Las consultas `at_distance` (densidad por vía, percepción) son cuadráticas por ciclo. | 🔵 Baja | Cachear vecindarios / espaciar la percepción / pesar solo el subgrafo conexo. Solo relevante para corridas grandes. |

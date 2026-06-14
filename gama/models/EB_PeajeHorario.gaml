@@ -11,16 +11,6 @@
  *   4. Display adicional: Recaudación acumulada y distribución NSE
  *   5. GestorAMT BDI activo: ajusta tarifas dinámicamente según densidad/velocidad
  *
- * Fixes aplicados (v2):
- *   FIX-1  ask EstacionMetro: guardado con not empty() para evitar nil agent
- *   FIX-2  GestorAMT vs cobrar: reflex cobrar solo actúa cuando GESTOR_ACTIVO=false
- *            o en el ciclo inicial; el gestor escribe directamente tarifa_vigente
- *   FIX-3  NB_CONDUCTORES default sube a 300 para activar deliberación BDI
- *   FIX-4  reflex deliberar añade trigger periódico en hora pico (cada 60 ciclos)
- *            para que agentes sin congestion suficiente deliberen en franja cobro
- *   FIX-5  Encabezado CSV protegido con flag csv_header_escrito (igual que E0)
- *   FIX-6  (revertido) Estaciones igualadas a E0 con coords UTM reales: Iñaquito (norte)
- *            y La Carolina (sur). Antes renombraba la norte a "El Labrador" (SMA.md §7.1).
  *
  * Hipótesis a contrastar (SMA.md §2.3):
  *   La zona de cobro reduce el flujo vehicular ≥ 20 % respecto al E0,

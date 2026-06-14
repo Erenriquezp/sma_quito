@@ -3,12 +3,6 @@
  * Modelo SMA — Zona de cobro por congestión, Parque La Carolina, Quito
  * UCE — Sistemas Colaborativos 2026
  *
- * MODIFICACIONES (Integración V2 Heterogénea sin Restricciones):
- * 1. Remoción absoluta de la lógica "Pico y Placa" (restringido_placa, count_restringidos, etc.).
- * 2. Segmentación de la flota: Motos, Autos, SUVs, Buses y Carga.
- * 3. Cálculo de congestión vial dinámico ponderado mediante 'factor_capacidad_via'.
- * 4. Corrección del bug de doble asignación de NSE en el init de ConductorBDI.
- * 5. Ajuste en el display para reflejar la leyenda de la flota y decisiones BDI puras.
  */
 
 model TrafficBase_LaCarolina_V2_Heterogeneo

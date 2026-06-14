@@ -1,21 +1,15 @@
- 
-
 UNIVERSIDAD CENTRAL DEL ECUADOR 
 
 Facultad de Ingeniería y Ciencias Aplicadas 
 
 Carrera de Computación 
-
-  
+ 
 
 Simulación Multiagente del Impacto de una Zona de Cobro por Congestión en el Sector Parque La Carolina 
 
 Evaluación de Políticas de Movilidad Urbana en Quito Mediante Arquitectura BDI y Datos Geoespaciales Reales 
 
   
-
- 
-
 Asignatura: 
 
 Sistemas Colaborativos (TGP09BFT03) — Noveno Semestre 
@@ -28,9 +22,6 @@ Período Académico:
 
 2026 – 2026 
 
- 
-
- 
 
 1. Información General del Proyecto 
 
@@ -62,7 +53,6 @@ Equipo
 
 5 integrantes (nivel de experiencia intermedio-bajo en herramientas) 
 
- 
 
 2. Planteamiento del Problema 
 
@@ -70,15 +60,11 @@ Equipo
 
 El Distrito Metropolitano de Quito (DMQ) registra más de 600 000 vehículos en circulación activa (INEC, Anuario de Transporte 2023), con un crecimiento anual del parque automotor que supera la capacidad de expansión de la infraestructura vial. El sector del Parque La Carolina concentra algunos de los corredores de mayor congestión de la capital: las avenidas Naciones Unidas, Amazonas, De los Shyris, Eloy Alfaro y 6 de Diciembre convergen en una zona de alto valor comercial y financiero que actualmente no cuenta con ningún mecanismo de gestión de demanda vehicular. 
 
- 
 
 El Municipio del DMQ, bajo la administración del Alcalde Pabel Muñoz, ha incluido en el Plan Maestro de Movilidad la propuesta conceptual de implementar una zona de cobro por congestión en el sector La Carolina. Sin embargo, a la fecha no existe ningún análisis cuantitativo publicado que evalúe la viabilidad de esta medida en el contexto específico de Quito, considerando el comportamiento heterogéneo de los usuarios, la oferta reciente del Metro de Quito (en operación desde diciembre de 2023) y el efecto preexistente del sistema de restricción vehicular "tercera placa". 
 
- 
-
 Este vacío de evidencia computacional justifica el desarrollo de un Sistema Multiagente (SMA) que simule el comportamiento emergente de la movilidad urbana bajo diferentes políticas de tarificación. La metodología de Modelado Basado en Agentes (ABM, por sus siglas en inglés) resulta idónea para este problema, dado que permite representar la heterogeneidad individual de los conductores, modelar la emergencia de fenómenos sistémicos como el desplazamiento de tráfico hacia vías periféricas, y evaluar el impacto diferenciado por nivel socioeconómico. 
 
- 
 
 2.2 Pregunta de investigación 
 
@@ -86,21 +72,15 @@ Este vacío de evidencia computacional justifica el desarrollo de un Sistema Mul
 
 Esta pregunta no tiene respuesta publicada para Quito. La simulación propuesta constituiría la primera evidencia computacional disponible para informar una decisión de política pública de alta relevancia para el DMQ. 
 
- 
-
 2.3 Hipótesis principal 
 
 La implementación de una zona de cobro por congestión con tarifa dinámica BDI en el polígono La Carolina reduce el volumen vehicular de paso en al menos un 20 %, incrementa el uso del Metro de Quito y no genera un desplazamiento crítico del tráfico hacia vías periféricas, en comparación con el escenario sin peaje. Este umbral de reducción se establece tomando como referencia el 27 % logrado por el London Congestion Charge en sus primeros seis meses de operación (2003). 
-
- 
 
 3. Objetivos 
 
 3.1 Objetivo general 
 
 Desarrollar un Sistema Multiagente (SMA) con arquitectura BDI e integración de datos geoespaciales reales que simule y evalúe el impacto de una zona de cobro por congestión en el sector Parque La Carolina de Quito, comparando un escenario baseline con un escenario de peaje por franja horaria, y documentando los resultados en un paper académico estructurado. 
-
- 
 
 3.2 Objetivos específicos 
 
@@ -114,8 +94,6 @@ Ejecutar y comparar dos escenarios de simulación: Escenario 0 (baseline sin pea
 
 Redactar un documento académico en Overleaf (LaTeX) que compare los resultados obtenidos con el modelo del London Congestion Charge (2003) y proponga recomendaciones de política para el Plan Maestro de Movilidad del DMQ. 
 
- 
-
 4. Justificación y Aporte Original 
 
 4.1 Vacíos de investigación identificados 
@@ -123,7 +101,6 @@ Redactar un documento académico en Overleaf (LaTeX) que compare los resultados 
 La revisión de literatura en Google Scholar y Scopus identifica cuatro vacíos que este proyecto aborda directamente: 
 
  
-
 Gap 
 
 Descripción 
@@ -169,28 +146,23 @@ Primera simulación multiagente BDI con datos geoespaciales reales que evalúa l
 El modelado basado en agentes (ABM) supera a los modelos de tráfico agregados en tres dimensiones críticas para este problema: 
 
  
-
 Heterogeneidad real: los conductores presentan diferente willingness-to-pay, distinto acceso al Metro según su origen-destino y diferente flexibilidad de ruta. Los modelos de ecuaciones diferenciales los promedian, perdiendo la información más valiosa para el análisis de equidad. 
 
 Emergencia del sistema: el desplazamiento de tráfico hacia vías periféricas es un fenómeno emergente que no puede predecirse con ecuaciones de nivel macro. Surge de las decisiones individuales de cientos de agentes interactuando simultáneamente con la red vial. 
 
 Análisis contrafactual: es posible modificar parámetros (tarifa, polígono, integración con Metro) y observar el impacto sin implementar nada físicamente. Exactamente lo que el Municipio necesita antes de comprometer infraestructura. 
 
- 
 
 5.2 Arquitectura BDI (Creencias, Deseos, Intenciones) 
 
 La arquitectura BDI, formalizada por Rao y Georgeff (1995), modela agentes deliberativos cuya conducta emerge de tres componentes: 
 
- 
 
 Creencias (Beliefs): el estado informacional del agente sobre el mundo. En el agente conductor: posición en la red vial, tarifa actual en el punto de control, tiempo estimado de viaje por cada ruta disponible, restricción de tercera placa activa o inactiva. 
 
 Deseos (Desires): los objetivos que el agente aspira a satisfacer. En este modelo: minimizar tiempo de viaje, minimizar costo total del desplazamiento y, en agentes de nivel socioeconómico bajo, maximizar la probabilidad de llegar al destino (aun si implica cambio modal). 
 
 Intenciones (Intentions): el plan de acción comprometido tras el proceso de deliberación. El agente elige entre tres intenciones posibles: pagar el peaje y mantener ruta, reroutear por vías periféricas, o cambiar al Metro de Quito. 
-
- 
 
 5.3 Sistemas multiagentes (SMA) — alineación con el syllabus 
 
@@ -396,27 +368,18 @@ Variable
 
 Exonerado del peaje. Compite con el Metro por captación modal en conductores que deciden no pagar. 
 
- 
-
 7.3 Función de utilidad del agente conductor BDI 
 
 El agente conductor evalúa tres alternativas mediante una función de utilidad multicriterio: 
 
- 
-
 U(alternativa) = w₁ · (1 / tiempo_viaje) + w₂ · (1 / costo) + w₃ · comodidad_percibida 
 
- 
-
 Donde los pesos w₁, w₂, w₃ varían según el perfil socioeconómico del agente. Un conductor de nivel alto asigna mayor peso a la comodidad y menor al costo; un conductor de nivel bajo maximiza el ahorro monetario incluso si implica mayor tiempo de viaje. Esta heterogeneidad es el mecanismo que permite analizar la equidad de la política: quién paga, quién rerouta y quién se ve forzado al Metro. 
-
- 
 
 7.4 Integración de la tercera placa 
 
 La restricción vehicular de tercera placa se modela como una precondición de activación del agente conductor, evaluada al inicio de cada ciclo de simulación: 
 
- 
 
 Exento con restricción activa ese día: el agente no puede ingresar al polígono independientemente de la tarifa. Su única intención posible es reroutear o usar el Metro. 
 
@@ -425,12 +388,10 @@ Sin restricción activa: el agente evalúa normalmente su función de utilidad a
 Exonerado estructural (emergencias, transporte público): acceso libre sin cobro en todos los escenarios. 
 
  
-
 8. Escenarios de Simulación 
 
 En consonancia con los recursos del equipo y el tiempo disponible (8 semanas), el proyecto implementa dos escenarios. Los escenarios A y C quedan documentados como trabajo futuro en el paper académico. 
 
- 
 
 Escenario 
 
@@ -471,7 +432,6 @@ Tarifa dinámica BDI en tiempo real
 Ajuste cada 5 min por gestor AMT BDI 
 
 Estado del arte. Alcance de investigación futura. 
-
  
 
 9. Métricas de Evaluación 
