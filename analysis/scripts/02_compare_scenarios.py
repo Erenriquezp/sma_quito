@@ -54,11 +54,10 @@ def cargar_datos() -> tuple[pd.DataFrame, pd.DataFrame]:
         raise FileNotFoundError(ruta)
 
     df = pd.read_csv(ruta)
-    # §3.3 fix: el paso 01 etiqueta el baseline como "E0_HET" (no "E0").
-    e0 = df[df["escenario"] == "E0_HET"].copy()
+    e0 = df[df["escenario"] == "E0"].copy()
     eb = df[df["escenario"] == "EB"].copy()
     if e0.empty:
-        print("[AVISO] 0 filas E0_HET en combined.csv — ¿corriste 01 con datos reales?")
+        print("[AVISO] 0 filas E0 en combined.csv — ¿corriste 01 con datos reales?")
     return e0, eb
 
 

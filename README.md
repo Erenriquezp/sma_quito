@@ -31,13 +31,15 @@ La hipótesis principal es que el peaje reduce el flujo vehicular en el polígon
 sma_quito/
 ├── gama/
 │   ├── models/
-│   │   ├── TrafficBase_LaCarolina.gaml   # Escenario E0 — Baseline
-│   │   └── EB_PeajeHorario.gaml          # Escenario EB — Peaje horario + GestorAMT BDI
+│   │   ├── TrafficBase_LaCarolina2.gaml  # Escenario E0 — Baseline (modelo final, zona configurable)
+│   │   ├── EB_PeajeHorario2.gaml         # Escenario EB — Peaje horario + GestorAMT BDI (modelo final)
+│   │   ├── TrafficBase_LaCarolina.gaml   # E0 — versión fija original (legado)
+│   │   └── EB_PeajeHorario.gaml          # EB — versión fija original (legado)
 │   ├── includes/
-│   │   └── red_vial_la_carolina.*        # Shapefile de la red vial (OSM/QGIS)
+│   │   └── *.shp                         # Shapefiles de red vial intercambiables (OSM/QGIS)
 │   └── outputs/
-│       ├── E0_run1_metricas.csv          # Resultados exportados E0
-│       └── EB_run1_metricas.csv          # Resultados exportados EB
+│       ├── E0_metricas.csv               # Resultados exportados E0
+│       └── EB_metricas.csv               # Resultados exportados EB
 ├── analysis/
 │   ├── scripts/
 │   │   ├── 01_process_results.py         # Carga y limpieza de CSVs de GAMA
@@ -81,9 +83,13 @@ cd sma_quito
 ### 2. Ejecutar la simulación en GAMA
 
 1. Abrir GAMA Platform e importar el proyecto desde la carpeta `gama/`.
-2. Ejecutar `TrafficBase_LaCarolina.gaml` → **Escenario E0 (Baseline)**.
-3. Ejecutar `EB_PeajeHorario.gaml` → **Escenario EB (Peaje horario)**.
-4. Los CSVs de resultados se exportan automáticamente en `gama/outputs/`.
+2. Ejecutar `TrafficBase_LaCarolina2.gaml` → **Escenario E0 (Baseline)**.
+3. Ejecutar `EB_PeajeHorario2.gaml` → **Escenario EB (Peaje horario)**.
+4. Los CSVs de resultados se exportan automáticamente en `gama/outputs/`
+   (`E0_metricas.csv` y `EB_metricas.csv`).
+
+> Para el paso a paso de operación (colocar la zona de cobro, leer el HUD, ajustar parámetros)
+> ver **[Cómo usar el simulador](#cómo-usar-el-simulador)** más abajo.
 
 ### 3. Instalar dependencias de Python
 
@@ -102,6 +108,54 @@ python 03_generate_figures.py   # Genera las figuras del paper (PNG + PDF)
 ```
 
 Las figuras se guardan en `analysis/figures/` y las tablas en `analysis/results/`.
+
+---
+
+## Cómo usar el simulador
+
+Tutorial breve para operar los modelos finales (`TrafficBase_LaCarolina2.gaml` y
+`EB_PeajeHorario2.gaml`) dentro de la interfaz de GAMA.
+
+### 1. Abrir el experimento
+
+En el explorador de GAMA, abre el `.gaml` y haz clic en el botón ▶ junto al
+`experiment` para lanzar la vista de simulación.
+
+### 2. Elegir el mapa y los parámetros (panel izquierdo)
+
+Antes de iniciar, en el panel **Parameters**:
+
+- **Seleccionar Entorno Vial** (`nombre_mapa`) — elige el shapefile: La Carolina,
+  Carolina alterno o Quicentro Sur.
+- **Tamaño vehículos** (categoría *Vista*) — ajusta el tamaño de los iconos en el mapa.
+- En **EB**, las tarifas por tipo (auto, SUV, carga) en hora pico.
+
+### 3. Definir la zona de cobro (doble clic)
+
+La zona de cobro **no está fija**: se dibuja con los puntos de control que colocas tú.
+
+1. **Doble clic** sobre el mapa en cada acceso al polígono donde quieras un peaje
+   (recomendado: ~5 puntos, C1–C5).
+2. La **zona de cobro** aparece como una *manta* azul: el polígono convexo que une tus puntos.
+3. Coloca los puntos **antes** de dejar correr la simulación.
+
+> ⚠️ Los puntos colocados por clic **no se guardan** entre corridas: hay que volver a
+> dibujarlos cada vez. Por eso, para resultados reproducibles del paper conviene una sola
+> corrida continua.
+
+### 4. Leer la pantalla
+
+- **Vías (mapa de calor):** gris-azulado = flujo libre · ámbar/coral = congestión.
+- **Vehículos:** icono orientado a su rumbo; el halo indica su estado (dentro/fuera de la zona).
+- **Estaciones Metro:** atractores de cambio modal.
+- **HUD (overlay):** KPIs en vivo, línea de tiempo del día (06–22 h) con franjas pico, e
+  indicador de día. En **EB** se añade la tarifa vigente y el bloque "peaje por tipo".
+
+### 5. Dejar correr y exportar
+
+La simulación arranca a las 06:00 y se **pausa sola a las 22:00**. Durante la corrida exporta
+métricas cada ~15 min de simulación a `gama/outputs/` (`E0_metricas.csv` / `EB_metricas.csv`).
+Al terminar, pasa al [pipeline de análisis](#4-ejecutar-el-pipeline-de-análisis).
 
 ---
 

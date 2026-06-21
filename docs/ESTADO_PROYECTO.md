@@ -1,145 +1,78 @@
-# Estado del Proyecto — SMA Movilidad Urbana Quito
+# Estado del Proyecto
 
-> **Última revisión:** 13 de junio de 2026
-> **Qué es esto:** una foto del proyecto frente a su objetivo y alcance — qué está
-> listo, qué falta y qué queda por corregir. No es un registro de cambios; para el
-> detalle histórico ver `INFORME_CAMBIOS_V2.md` y el historial de commits.
+> Foto del proyecto frente a sus objetivos (`SMA.md §3.2`). **Última revisión:** 20 jun 2026.
+> Para el detalle histórico ver `INFORME_CAMBIOS_V2.md` y los commits.
 
----
+## En una línea
 
-## Objetivo y alcance (según `docs/SMA.md`)
-
-**Objetivo.** SMA con arquitectura BDI y datos geoespaciales reales que simule y evalúe
-una **zona de cobro por congestión en el Parque La Carolina (Quito)**, comparando un
-baseline sin peaje contra un peaje por franja horaria, y documente los resultados en un
-paper académico (IEEE).
-
-**Hipótesis a contrastar (§2.3).** El peaje reduce el volumen vehicular de paso **≥ 20 %**,
-incrementa el uso del Metro y no genera desplazamiento periférico crítico, tomando como
-referencia el −27 % del *London Congestion Charge* (2003).
-
-**Alcance acordado (§8).** Dos escenarios al mismo horizonte (06:00–22:00):
-- **E0 — Baseline:** pico y placa activo, sin cobro, Metro disponible.
-- **EB — Peaje por franja horaria:** $0 fuera de pico; $1.50–$2.00 en pico (07–10 h y
-  17–20 h), modelo Londres, con tercera placa.
-- Escenarios A (peaje fijo 24 h) y C (tarifa dinámica pura) quedan como trabajo futuro.
-
-Seis tipos de agente (§7.2): Conductor BDI, Punto de control, Estación Metro, Gestor AMT,
-Red vial y Transporte público exonerado.
+Arquitectura, modelos y pipeline **completos**. El único bloqueante de resultados es **correr
+ambos escenarios completos (06:00–22:00)** con los modelos finales: hoy solo hay corridas
+parciales de la mañana y el pipeline cae en datos sintéticos.
 
 ---
 
-## Resumen en una línea
+## Avance por objetivo (`SMA.md §3.2`)
 
-La **arquitectura, el modelo y el pipeline están completos y funcionando**; lo único que
-bloquea los resultados del paper es **correr ambos escenarios completos (06:00–22:00)** —
-hoy solo existen corridas parciales de la mañana.
-
----
-
-## 1. Lo que está listo ✅
-
-### Modelos GAML (`gama/models/`)
-- **Infraestructura:** carga del shapefile real (`red_vial_la_carolina.shp`, EPSG:32717),
-  componente conexo, reloj 06:00–22:00 (`step 10 #s`), detección de hora pico, export CSV
-  cada ~15 min sim con header protegido.
-- **`ConductorBDI`:** perfil NSE (15/45/40 %) con WTP, pesos de utilidad y umbral de
-  congestión por nivel; tres intenciones (RUTA_DIRECTA / REROUTEAR / METRO) por utilidad
-  multicriterio; **diferenciación por tipo de vehículo** (moto/auto/SUV/bus/carga) con
-  velocidad, ocupación de vía y exoneración; **tercera placa en ambos escenarios**.
-- **`PuntoControl`:** 5 accesos C1–C5; tarifa por franja en EB; convivencia con el gestor
-  (el gestor escribe `tarifa_vigente` en pico); cobro $0 fines de semana.
-- **`GestorAMT` (EB):** BDI deliberativo (creencias densidad/velocidad/tendencia/saturación
-  → MANTENER/SUBIR/BAJAR/SUSPENDER cada 30 ciclos) con comunicación FIPA a los puntos de
-  control y display dedicado.
-- **`EstacionMetro`:** 2 estaciones (Iñaquito, La Carolina), atractor de modal shift.
-- **Velocidad media** estimada por coeficiente de congestión dentro del polígono; el cambio
-  modal al Metro descongestiona la vía.
-
-### Pipeline Python (`analysis/scripts/`)
-- Corre `01→02→03` de punta a punta sobre datos reales (sin caer en sintéticos).
-- Etiqueta unificada `E0_HET`; columnas de flujo derivadas de los contadores NSE reales;
-  corrección de equidad por buses (`*_corr`); UTF-8 y `to_latex` con fallback en Windows.
-- Produce `combined.csv`, tablas comparativas, tabla benchmark y 5 figuras (PNG + PDF).
+| # | Objetivo | Estado | Qué falta |
+|---|---|:--:|---|
+| **OE1** | Polígono con datos GIS reales | 🟢 Casi | Polígono de cobro como **capa de área GIS** para el paper; densidad **INEC** explícita. |
+| **OE2** | Conductores BDI por NSE, 3 decisiones | ✅ Completo | — |
+| **OE3** | Tercera placa + calibración AMT | 🟡 Parcial | **Calibración formal AMT**: CSV de parámetros BDI + tabla (hoy *hardcoded*). |
+| **OE4** | Ejecutar y comparar E0 vs EB | 🔴 Bloqueado | **Corridas completas** (ver abajo) + métrica de **equidad (Δ Gini)**. |
+| **OE5** | Paper Overleaf (IEEE) | 🟡 Pendiente | Plantilla LaTeX + redactar las 6 secciones (`SMA.md §15`); Resultados/Discusión dependen de OE4. |
 
 ---
 
-## 2. Lo que falta ❌
+## Lo que falta
 
 ### 🔴 Bloqueante único — datos completos
-**Correr E0_HET y EB completos (06:00–22:00, hasta `do pause`) al mismo horizonte.** Hoy
-las corridas son parciales (E0 llega a ~06:45 = 3 filas; EB a ~07:15 = 5 filas). Esto es lo
-único que falta para:
-- estabilizar el % de reducción vehicular (osciló −18…−27 % en parciales),
-- incluir el **pico vespertino** (17–20 h), hoy ausente,
-- dar potencia a los t-tests (no significativos por n pequeño).
 
-Tras la corrida, regenerar `analysis/results/` y las figuras.
+Correr **E0 y EB (modelos `*2` finales)** completos (06:00–22:00, hasta `do pause`), generando
+`E0_metricas.csv` y `EB_metricas.csv`, y regenerar el pipeline (`01→02→03`). Los CSV actuales son
+parciales y de los modelos legado; hasta regenerarlos, `01` cae en **datos sintéticos**.
+
+Desbloquea: estabilizar el % de reducción (osciló −18…−27 % en parciales), incluir el **pico
+vespertino** (17–20 h, hoy ausente) y dar potencia a los t-tests.
 
 ### 🟡 Análisis y paper
-- **Figura de equidad NSE (Δ Gini modal)** e implementación del cálculo con columnas `*_corr`.
-- **Figura de recaudación y tarifa dinámica** del GestorAMT (datos disponibles en EB).
-- **Plantilla LaTeX Overleaf (IEEE)** con las 6 secciones de `SMA.md §15`; la Metodología
-  ya es redactable desde el código.
+
+- Figura de **equidad NSE (Δ Gini modal)** con las columnas `*_corr` → cierra OE4.
+- Figura de **recaudación y tarifa dinámica** del GestorAMT (datos disponibles en EB).
+- **Plantilla LaTeX Overleaf (IEEE)** con las 6 secciones de `SMA.md §15` → OE5.
 - Sección **Discusión** con el benchmark Londres.
 
 ### 🟢 Entregables y calidad
-- **CSV de parámetros BDI** por perfil NSE y **tabla de calibración AMT** (entregables P2;
-  hoy los parámetros están hardcoded).
-- **Polígono de cobro como capa de área GIS** para el paper (hoy se dibuja en GAMA pero no
-  existe como capa).
 
-### 🟣 Nuevo requerimiento — modelo configurable de zona/mapa
-Crear un **tercer modelo** que permita **cambiar de zona** (cargar otro mapa y ajustar las
-zonas de cobro) manteniendo el mismo comportamiento del SMA. Requisitos:
-- **No tocar los modelos actuales:** partir de una **copia** de `EB_PeajeHorario.gaml`
-  (el más completo) hacia un nuevo archivo (p. ej. `gama/models/ZonaConfigurable.gaml`),
-  para no corromper E0 ni EB que ya funcionan.
-- **Mapa intercambiable:** la red vial debe ser un parámetro (ruta del shapefile y
-  `CRS_DATOS`), no un valor fijo, para apuntar a otra zona sin editar el código.
-- **Zonas de cobro ajustables:** el polígono de cobro y las posiciones de los puntos de
-  control / estaciones deben ser configurables (parámetros o un archivo de definición de
-  zona), no constantes embebidas en el `init`.
-- **Mismo funcionamiento:** conductores BDI, gestor AMT, métricas y export CSV deben operar
-  igual que en EB, sin depender de geometrías específicas de La Carolina.
-
-> *Consideración de diseño:* hoy la geometría está hardcoded en el `init` de cada modelo
-> (coordenadas UTM + `to_GAMA_CRS`). Para que el tercer modelo sea realmente reutilizable
-> conviene externalizar la zona a parámetros del experimento o a un shapefile/CSV de zona,
-> en vez de copiar y reescribir coordenadas a mano por cada nueva área.
+- **CSV de parámetros BDI** por NSE + **tabla de calibración AMT** → cierra OE3.
+- **Polígono de cobro como capa GIS** + densidad INEC → cierra OE1.
+- **Persistir la zona configurable** (shapefile/CSV de puntos de control) para que los modelos
+  `*2` sean reproducibles fuera del modo interactivo (hoy los puntos por clic no se guardan).
 
 ---
 
-## 3. Correcciones pendientes 🔧
+## Correcciones pendientes 🔧
 
-| # | Tema | Severidad | Acción |
-|---|---|---|---|
-| C2 | **Riesgo de datos sintéticos silenciosos.** `01_process_results.py` inventa datos calibrados si falta un CSV, lo que puede producir figuras 100 % sintéticas sin que se note. | 🟠 Media | Añadir flag `--strict` que aborte si algún escenario cae en sintético y marca de agua "DATOS SINTÉTICOS" en las figuras en ese modo. |
-| C3 | **Rama `SUSPENDER` del GestorAMT es código muerto.** Con capacidad 8000/estación y ≤300 agentes, la saturación nunca llega a 0.85. | 🔵 Baja | Bajar la capacidad a la escala de agentes simulados, o documentar que es ilustrativa. |
-| C4 | **Rendimiento si se sube a 500 agentes.** Las consultas `at_distance` (densidad por vía, percepción) son cuadráticas por ciclo. | 🔵 Baja | Cachear vecindarios / espaciar la percepción / pesar solo el subgrafo conexo. Solo relevante para corridas grandes. |
+| # | Tema | Sev. | Acción |
+|---|---|:--:|---|
+| C2 | `01` inventa datos sintéticos si falta un CSV → figuras 100 % falsas sin avisar. | 🟠 | Flag `--strict` que aborte + marca de agua "DATOS SINTÉTICOS". |
+| C3 | Rama `SUSPENDER` del GestorAMT es código muerto (saturación nunca llega a 0.85). | 🔵 | Bajar la capacidad a la escala de agentes, o documentar que es ilustrativa. |
+| C4 | Consultas `at_distance` cuadráticas; lento si se sube a 500 agentes. | 🔵 | Cachear vecindarios / espaciar percepción. Solo para corridas grandes. |
+| C5 | Conviven 4 modelos; un cambio de comportamiento debe replicarse E0↔EB a mano. | 🔵 | Considerar eliminar los legado si no se usan. |
 
-> **Mantener en sincronía:** al agregar una métrica hay que tocar tres sitios — el header
-> `save [...]` del `init`, la fila de datos en `exportar_metricas` y `COLUMNAS_*` en
-> `01_process_results.py`. Los dos modelos (E0/EB) no comparten código: un cambio de
-> comportamiento suele tener que replicarse en ambos.
+> **Sincronía al agregar métricas:** tocar tres sitios — header `save [...]` del `init`, fila de
+> datos en `exportar_metricas` y `COLUMNAS_*` en `01_process_results.py`.
 
 ---
 
-## 4. Ruta crítica al paper
+## Ruta crítica al paper
 
 ```
-[🔴] Correr E0_HET + EB completos (06:00–22:00)
+[🔴] Correr E0 + EB (modelos *2) completos (06:00–22:00)
         └─→ Regenerar pipeline con datos reales (01→02→03)
                 ├─→ Tablas + Fig1–Fig5 definitivas
                 ├─→ Fig equidad NSE (Δ Gini) + Fig recaudación/tarifa
                 └─→ Resultados → Discusión (benchmark Londres)
 
 [en paralelo] Plantilla Overleaf + Metodología (ya redactable)
+[en paralelo] Entregables P2: CSV de parámetros BDI + tabla calibración AMT
 ```
-
-Verificar el fix de coordenadas (C1) antes de la corrida final, para no rehacerla.
-
----
-
-*Documento basado en revisión directa del código y los datos del repositorio `sma_quito`
-al 13 de junio de 2026.*

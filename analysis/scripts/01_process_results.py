@@ -8,15 +8,15 @@ limpio y estandarizado, listo para análisis comparativo.
 Uso:
     python 01_process_results.py
 
-Entradas:  ../../gama/outputs/E0_heterogeneo_metricas.csv   ← E0 con tipos
-           ../../gama/outputs/EB_run*_metricas.csv
+Entradas:  ../../gama/outputs/E0_metricas.csv   ← baseline (escenario "E0")
+           ../../gama/outputs/EB_metricas.csv   ← peaje    (escenario "EB")
 Salidas:   ../results/E0_processed.csv
            ../results/EB_processed.csv
            ../results/combined.csv
            ../results/resumen_estadistico.csv
 
 v2 — junio 2026:
-  - E0 ahora lee E0_heterogeneo_metricas.csv con etiqueta "E0_HET"
+  - Escenarios estandarizados: E0 (baseline) y EB (peaje); flota heterogénea
   - Rellena con cero recaudacion_acum_usd y nb_restringidos_placa si ausentes
   - Filtra buses del análisis de equidad NSE (directo_nse_bajo_corr)
   - Columnas alineadas con el CSV real de GAMA (20 columnas con header)
@@ -44,11 +44,11 @@ RESULTS_DIR = ROOT / "analysis" / "results"
 RESULTS_DIR.mkdir(parents=True, exist_ok=True)
 
 # ── Archivos de entrada por escenario ─────────────────────────────────────
-# E0_HET: baseline con flota heterogénea (nueva versión del modelo)
-# EB:     peaje por franja horaria (múltiples réplicas)
+# E0: baseline sin peaje. EB: peaje por franja horaria. Un CSV fijo por escenario;
+# si un valor es None, se busca por patrón glob {escenario}_run*_metricas.csv.
 ARCHIVOS_ESCENARIO = {
-    "E0_HET": ["E0_heterogeneo_metricas.csv"],
-    "EB":     None,          # None → búsqueda por patrón glob EB_run*
+    "E0": ["E0_metricas.csv"],
+    "EB": ["EB_metricas.csv"],
 }
 
 # ── Fracción de buses en la flota (calibrado DMQ 2023) ────────────────────
@@ -62,7 +62,7 @@ BUS_FRACTION     = NB_BUSES_DEFAULT / NB_TOTAL_DEFAULT   # 0.10
 
 # ── Columnas reales exportadas por GAMA ───────────────────────────────────
 # Orden exacto del CSV (header incluido en el archivo → pd.read_csv normal).
-# Las columnas NSE desagregadas solo existen en EB; en E0_HET pueden faltar.
+# Las columnas NSE desagregadas solo existen en EB; en E0 pueden faltar.
 COLUMNAS_CORE = [
     "escenario", "minuto", "hora", "es_hora_pico",
     "nb_conductores",
@@ -83,7 +83,8 @@ COLUMNAS_NSE = [
 def cargar_runs(escenario: str) -> pd.DataFrame:
     """
     Carga uno o varios CSV de un escenario y los concatena.
-    E0_HET: archivo fijo. EB: patrón glob EB_run*_metricas.csv.
+    Archivo fijo por escenario (E0_metricas.csv / EB_metricas.csv); admite
+    glob {escenario}_run*_metricas.csv si el escenario no tiene archivo fijo.
     """
     if ARCHIVOS_ESCENARIO.get(escenario):
         archivos = [GAMA_OUT / f for f in ARCHIVOS_ESCENARIO[escenario]
@@ -116,7 +117,7 @@ def rellenar_columnas_faltantes(df: pd.DataFrame, escenario: str) -> pd.DataFram
     """
     Paso 2: rellena columnas que pueden estar ausentes según el escenario.
 
-    E0_HET no tiene peaje → recaudacion_acum_usd = 0.
+    E0 no tiene peaje → recaudacion_acum_usd = 0.
     Si la restricción de placa no se exportó → nb_restringidos_placa = 0.
     Columnas NSE desagregadas opcionales → 0 si ausentes.
     """
@@ -286,11 +287,11 @@ def generar_datos_ejemplo(escenario: str) -> pd.DataFrame:
     Datos sintéticos para probar el pipeline sin simulación GAMA.
     Calibrados con datos AMT y benchmark Londres 2003.
     """
-    np.random.seed(42 if escenario == "E0_HET" else 99)
+    np.random.seed(42 if escenario == "E0" else 99)
     minutos = list(range(360, 1320, 15))
 
     params = {
-        "E0_HET": dict(flujo=320, vel=16.0, metro=5.0,  recaud=0.0),
+        "E0":     dict(flujo=320, vel=16.0, metro=5.0,  recaud=0.0),
         "EB":     dict(flujo=230, vel=19.5, metro=18.0, recaud=460.0),
     }.get(escenario, dict(flujo=300, vel=17.0, metro=8.0, recaud=0.0))
 
@@ -347,7 +348,7 @@ def main():
 
     resultados = {}
 
-    for escenario in ["E0_HET", "EB"]:
+    for escenario in ["E0", "EB"]:
         print(f"\n[{escenario}] Cargando datos...")
         df_raw    = cargar_runs(escenario)
         df_limpio = limpiar_dataframe(df_raw, escenario)

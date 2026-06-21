@@ -70,8 +70,7 @@ def cargar_datos() -> tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame]:
         raise FileNotFoundError(f"Ejecutar 01_process_results.py primero. No encontrado: {ruta}")
 
     df = pd.read_csv(ruta)
-    # §3.3 fix: el paso 01 etiqueta el baseline como "E0_HET" (no "E0").
-    e0 = df[df["escenario"] == "E0_HET"].copy()
+    e0 = df[df["escenario"] == "E0"].copy()
     eb = df[df["escenario"] == "EB"].copy()
     return df, e0, eb
 

@@ -1,6 +1,6 @@
 escenario,minuto,hora,es_hora_pico,tarifa_vigente_usd,nb_conductores,velocidad_media_kmh,pct_ruta_directa,pct_reroutean,pct_metro,modal_shift_acum,recaudacion_acum_usd,nb_restringidos_placa,directo_nse_alto,directo_nse_medio,directo_nse_bajo,metro_nse_alto,metro_nse_medio,metro_nse_bajo,rerouta_nse_alto,rerouta_nse_medio,rerouta_nse_bajo
-EB,375,6:15,false,0.0,300,32.3,100.0,0.0,0.0,0,0.0,63,48,141,111,0,0,0,0,0,0
-EB,390,6:30,false,0.0,300,29.9,100.0,0.0,0.0,0,0.0,63,48,141,111,0,0,0,0,0,0
-EB,405,6:45,false,0.0,300,31.6,100.0,0.0,0.0,0,0.0,63,48,141,111,0,0,0,0,0,0
-EB,420,7:00,true,0.0,300,32.6,100.0,0.0,0.0,0,0.0,63,48,141,111,0,0,0,0,0,0
-EB,435,7:15,true,2.0,300,34.0,62.7,17.3,20.0,1200,624.0,63,40,83,65,7,29,24,1,29,22
+EB,375,6:15,false,0.0,300,35.0,100.0,0.0,0.0,0,0.0,48,51,134,115,0,0,0,0,0,0
+EB,390,6:30,false,0.0,300,36.2,100.0,0.0,0.0,0,0.0,48,51,134,115,0,0,0,0,0,0
+EB,405,6:45,false,0.0,300,35.6,100.0,0.0,0.0,0,0.0,48,51,134,115,0,0,0,0,0,0
+EB,420,7:00,true,0.0,300,34.5,100.0,0.0,0.0,0,0.0,48,51,134,115,0,0,0,0,0,0
+EB,435,7:15,true,2.0,367,36.6,71.1,13.9,15.0,784,240.0,60,51,110,100,6,31,18,6,23,22

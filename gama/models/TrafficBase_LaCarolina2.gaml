@@ -1,63 +1,64 @@
 /**
- * TrafficBase_LaCarolina_V2_Heterogeneo.gaml
- * Modelo SMA — Zona de cobro por congestión, Parque La Carolina, Quito
- * UCE — Sistemas Colaborativos 2026
+ * TrafficBase_LaCarolina2.gaml
+ * SMA — Escenario 0 (baseline sin peaje), zona de cobro por congestión, Quito.
+ * UCE — Sistemas Colaborativos 2026.
  *
- * Ajustes:
- * - Se eliminaron los puntos de control cableados en el código.
- * - Toda la red de puntos de control se define mediante doble clic en la interfaz.
+ * Modelo configurable: el mapa se elige por parámetro (nombre_mapa) y la zona de
+ * cobro se construye a partir de los puntos de control que el usuario coloca por
+ * doble clic. En E0 los puntos no cobran (modo_peaje_activo = false).
+ * Salida: outputs/E0_metricas.csv (escenario "E0").
  */
 
-model TrafficBase_LaCarolina_V2_Heterogeneo
+model TrafficBase_LaCarolina
 
 global {
 
-	// 1. Parámetro de texto para elegir el mapa
-	string nombre_mapa <- "red_vial_la_carolina.shp" among: ["red_vial_la_carolina.shp", "mapaCarolina.shp", "mapaQuicentroSur.shp"];
-
-	// 2. Carga dinámica del mapa seleccionado
+	// ── Mapa intercambiable ───────────────────────────────────────────────────
+	string nombre_mapa <- "mapaCarolina.shp" among: ["red_vial_la_carolina.shp", "mapaCarolina.shp", "mapaQuicentroSur.shp"];
 	file road_shapefile <- file("../includes/" + nombre_mapa);
 	geometry shape      <- envelope(road_shapefile);
 	float step          <- 10 #s;
 
-	// ── INYECCIÓN INTERACTIVA DE PUNTOS DE CONTROL (Doble Clic) ─────────────
+	// ── Puntos de control colocados por el usuario (doble clic) ────────────────
 	list<point> puntos_control_usuario <- [];
-	point punto_pendiente <- nil;
-	point ultimo_click <- nil;
-	int ciclo_ultimo_click <- -999;
+	point punto_pendiente   <- nil;
+	point ultimo_click      <- nil;
+	int   ciclo_ultimo_click <- -999;
 
 	reflex crear_punto_control when: punto_pendiente != nil {
 		puntos_control_usuario << punto_pendiente;
-
 		create PuntoControl with: [
-			id_control::length(puntos_control_usuario), // Arranca desde el ID 1 en adelante
-			nombre_acceso::"PC_Usuario_" + string(length(puntos_control_usuario)),
+			id_control::length(puntos_control_usuario),
+			nombre_acceso::"C" + string(length(puntos_control_usuario)),
 			location::punto_pendiente,
 			tarifa_vigente::0.0,
-			modo_peaje_activo::false // En E0 se mantiene inactivo (sin cobro)
+			modo_peaje_activo::false   // E0: los puntos no cobran
 		];
 
-		write "Punto de control (Baseline) agregado por el usuario en: X=" + string(punto_pendiente.x) + " Y=" + string(punto_pendiente.y);
+		// La zona de cobro (manta azul) es la envolvente convexa de los puntos
+		// colocados. Requiere >= 3 puntos; los clics ya están en coordenadas del
+		// modelo, así que el polígono queda alineado con el mapa activo.
+		if (length(puntos_control_usuario) >= 3) {
+			zona_peaje <- convex_hull(polygon(puntos_control_usuario));
+			lbl_zona   <- zona_peaje.location;
+		}
 		punto_pendiente <- nil;
 	}
 
-	// ── INYECCIÓN DINÁMICA DE TRÁFICO EN HORA PICO ───────────────────
+	// ── Inyección de tráfico en hora pico (oleadas de ingreso a la zona) ───────
 	reflex inyectar_trafico_hora_pico when: es_hora_pico and (dia_semana >= 1 and dia_semana <= 5) {
-		
 		if (cycle mod 3 = 0) {
 			list<road> pool_vias <- empty(roads_conectadas) ? list(road) : roads_conectadas;
-			
 			create ConductorBDI number: 2 {
-				tipo_vehiculo <- one_of(["AUTO", "SUV", "MOTO", "CARGA"]);
+				tipo_vehiculo   <- one_of(["AUTO", "SUV", "MOTO", "CARGA"]);
 				road rd <- one_of(pool_vias);
 				location <- any_location_in(rd);
 				destino  <- any_location_in(one_of(pool_vias));
-				decision_tomada <- false; 
+				decision_tomada <- false;
 			}
-			
 			if (cycle mod 12 = 0) {
 				create ConductorBDI number: 1 {
-					tipo_vehiculo <- "BUS";
+					tipo_vehiculo   <- "BUS";
 					road rd <- one_of(pool_vias);
 					location <- any_location_in(rd);
 					destino  <- any_location_in(one_of(pool_vias));
@@ -67,9 +68,9 @@ global {
 		}
 	}
 
-	// ── Reloj ────────────────────────────────────────────────────────────────
-	int hora_inicio_sim      <- 360;   // 06:00 en minutos del día
-	int hora_fin_sim         <- 1320;  // 22:00 en minutos del día
+	// ── Reloj (06:00–22:00) y franjas pico (07–10 h, 17–20 h) ──────────────────
+	int hora_inicio_sim      <- 360;
+	int hora_fin_sim         <- 1320;
 	int minuto_actual        <- 360;
 	int HORA_PICO_MAT_INICIO <- 420;
 	int HORA_PICO_MAT_FIN    <- 600;
@@ -77,123 +78,89 @@ global {
 	int HORA_PICO_VES_FIN    <- 1200;
 	bool es_hora_pico        <- false;
 
-	// ── Parámetros de la Flota ───────────────────────────────────────────────
-	int NB_MOTOS  <- 45;    
-	int NB_AUTOS  <- 165;   
-	int NB_SUVS   <- 45;    
-	int NB_BUSES  <- 30;    
-	int NB_CARGAS <- 15;    
-	
-	float PCT_NSE_ALTO          <- 0.15;
-	float PCT_NSE_MEDIO         <- 0.45;
-	float PCT_NSE_BAJO          <- 0.40;
-	float WTP_NSE_ALTO          <- 3.00;
-	float WTP_NSE_MEDIO         <- 2.25;
-	float WTP_NSE_BAJO          <- 0.50;
-	int   dia_semana            <- 1;
+	// ── Flota por tipo de vehículo (distribución parque automotor DMQ) ─────────
+	int NB_MOTOS  <- 45;    // ~15 %
+	int NB_AUTOS  <- 165;   // ~55 %
+	int NB_SUVS   <- 45;    // ~15 %
+	int NB_BUSES  <- 30;    // ~10 % — exonerados (SMA.md §7.2)
+	int NB_CARGAS <- 15;    // ~5 %
 
+	// ── Perfil socioeconómico (NSE) ────────────────────────────────────────────
+	float PCT_NSE_ALTO  <- 0.15;
+	float PCT_NSE_MEDIO <- 0.45;
+	float PCT_NSE_BAJO  <- 0.40;
+	float WTP_NSE_ALTO  <- 3.00;
+	float WTP_NSE_MEDIO <- 2.25;
+	float WTP_NSE_BAJO  <- 0.50;
+
+	// ── Tercera placa ──────────────────────────────────────────────────────────
 	float PCT_RESTRICCION_PLACA <- 0.20;
 	int   RESTRICCION_INICIO    <- 360;
 	int   RESTRICCION_FIN       <- 1200;
+	int   dia_semana            <- 1;
 
-	// ── Peaje (Inactivo en E0) ───────────────────────────────────────────────
-	float TARIFA_VALLE <- 0.00;
-	float TARIFA_PICO_AUTO <- 2.00;
-	float COSTO_METRO <- 0.45;
-	float VEL_LIBRE_KMH <- 50.0;
+	float COSTO_METRO   <- 0.45;
+	float VEL_LIBRE_KMH <- 50.0;   // flujo libre; la velocidad media emergente = VEL_LIBRE × coef. de congestión
 
-	string CRS_DATOS <- "EPSG:32717";
+	// Icono de vehículo (se carga una sola vez). Disponibles: voit_blue / voit_red / voit.png (negro).
+	image_file ICON_VEHICULO <- image_file("../includes/voit_blue.png");
+	// Tamaño de los vehículos en unidades de mundo (slider "Vista"), ajustable en caliente.
+	float ESCALA_VEHICULO <- 10.0;
+
+	string CRS_DATOS <- "EPSG:32717";   // UTM 17S — usado por las estaciones Metro
+
+	// ── Zona de cobro (envolvente de los puntos C#; vacía hasta tener >= 3) ────
 	geometry zona_peaje;
-	point    lbl_zona;   
+	point    lbl_zona;
 
-	// ── Red vial ─────────────────────────────────────────────────────────────
+	// ── Red vial ───────────────────────────────────────────────────────────────
 	graph road_network;
 	map<road, float> road_weights;
 	list<road> roads_conectadas <- [];
 
-	// ── Métricas globales de decisiones ─────────────────────────────────────
-	int   count_ruta_directa <- 0;
-	int   count_reroutean    <- 0;
-	int   count_metro        <- 0;
-	int   chart_ruta_directa <- 0;
-	int   chart_reroutean    <- 0;
-	int   chart_metro        <- 0;
-	int   count_restringidos <- 0;
-	int   chart_restringidos <- 0;
+	// ── Métricas ─────────────────────────────────────────────────────────────
+	float velocidad_media  <- 0.0;
+	int   modal_shift_acum <- 0;
 
-	float velocidad_media    <- 0.0;
-	int   modal_shift_acum   <- 0;
-
-	// ── Métricas desagregadas por NSE ────────────────────────────────────────
-	int   count_directo_alto  <- 0;
-	int   count_directo_medio <- 0;
-	int   count_directo_bajo  <- 0;
-	int   count_metro_alto    <- 0;
-	int   count_metro_medio   <- 0;
-	int   count_metro_bajo    <- 0;
-	int   count_rerouta_alto  <- 0;
-	int   count_rerouta_medio <- 0;
-	int   count_rerouta_bajo  <- 0;
-
-	float recaudacion_acum   <- 0.0;
-	int   INTERVALO_LOG      <- 90;   
-	string OUTPUT_PATH       <- "../outputs/";
+	int    INTERVALO_LOG <- 90;
+	string OUTPUT_PATH   <- "../outputs/";
 	bool   csv_header_escrito <- false;
 
 	init {
-		write "=================================================";
-		write "  ESCENARIO 0 MODIFICADO — BASELINE HETEROGÉNEO";
-		write "  SIN PEAJE FIJO - PUNTOS DE CONTROL DINÁMICOS";
-		write "  Mapa activo: " + nombre_mapa;
-		write "  SMA Movilidad Quito — UCE 2026";
-		write "=================================================";
+		write "=== ESCENARIO E0 — BASELINE SIN PEAJE | Mapa: " + nombre_mapa + " ===";
 
 		create road from: road_shapefile;
-
 		road_weights <- road as_map (each :: each.shape.perimeter);
 		road_network <- as_edge_graph(road);
 
-		graph main_graph   <- main_connected_component(road_network);
-		roads_conectadas   <- road where (main_graph contains_edge each.shape);
-		
+		graph main_graph <- main_connected_component(road_network);
+		roads_conectadas <- road where (main_graph contains_edge each.shape);
 		if empty(roads_conectadas) {
 			roads_conectadas <- road where (main_graph contains_node (first(each.shape.points)));
 		}
 		if empty(roads_conectadas) { roads_conectadas <- list(road); }
-
 		road_network <- main_graph;
 		road_weights <- roads_conectadas as_map (each :: each.shape.perimeter);
 
-		// Calibración de BBOX según el mapa seleccionado
-		if (nombre_mapa contains "Sur") {
-			zona_peaje <- to_GAMA_CRS(polygon([{774500.0, 9965000.0}, {776000.0, 9965000.0},
-			                                   {776000.0, 9966500.0}, {774500.0, 9966500.0}]), CRS_DATOS);
-			lbl_zona   <- (to_GAMA_CRS({774550.0, 9964950.0}, CRS_DATOS)).location;
-			step       <- 2 #s; 
-		} else {
-			zona_peaje <- to_GAMA_CRS(polygon([{779652.0, 9979104.0}, {780720.0, 9979104.0},
-			                                   {780720.0, 9980535.0}, {779652.0, 9980535.0}]), CRS_DATOS);
-			lbl_zona   <- (to_GAMA_CRS({779680.0, 9979060.0}, CRS_DATOS)).location;
-		}
+		// La zona de cobro se construye con los clics del usuario (ver crear_punto_control).
+		zona_peaje <- nil;
+		lbl_zona   <- nil;
+		if (nombre_mapa contains "Sur") { step <- 2 #s; }
 
-		// Se mantienen únicamente las estaciones de Metro si estamos en La Carolina
+		// Estaciones Metro solo en La Carolina (Iñaquito y La Carolina).
 		if (not (nombre_mapa contains "Sur")) {
-			create EstacionMetro with: [nombre::"Iñaquito", location::(to_GAMA_CRS({780119.0, 9980458.0}, CRS_DATOS)).location];
+			create EstacionMetro with: [nombre::"Iñaquito",    location::(to_GAMA_CRS({780119.0, 9980458.0}, CRS_DATOS)).location];
 			create EstacionMetro with: [nombre::"La Carolina", location::(to_GAMA_CRS({779831.0, 9978891.0}, CRS_DATOS)).location];
 		}
 
-		// ── Creación de la Flota Vehicular ────────────────────────────────────
 		list<road> road_pool <- empty(roads_conectadas) ? list(road) : roads_conectadas;
-		
 		create ConductorBDI number: NB_MOTOS  { tipo_vehiculo <- "MOTO";  road rd <- one_of(road_pool); location <- any_location_in(rd); destino <- any_location_in(one_of(road_pool)); }
 		create ConductorBDI number: NB_AUTOS  { tipo_vehiculo <- "AUTO";  road rd <- one_of(road_pool); location <- any_location_in(rd); destino <- any_location_in(one_of(road_pool)); }
 		create ConductorBDI number: NB_SUVS   { tipo_vehiculo <- "SUV";   road rd <- one_of(road_pool); location <- any_location_in(rd); destino <- any_location_in(one_of(road_pool)); }
 		create ConductorBDI number: NB_BUSES  { tipo_vehiculo <- "BUS";   road rd <- one_of(road_pool); location <- any_location_in(rd); destino <- any_location_in(one_of(road_pool)); }
 		create ConductorBDI number: NB_CARGAS { tipo_vehiculo <- "CARGA"; road rd <- one_of(road_pool); location <- any_location_in(rd); destino <- any_location_in(one_of(road_pool)); }
 
-		chart_ruta_directa <- 0;
-
-		string archivo_csv <- OUTPUT_PATH + "E0_heterogeneo_metricas.csv";
+		string archivo_csv <- OUTPUT_PATH + "E0_metricas.csv";
 		save ["escenario","minuto","hora","es_hora_pico",
 		      "nb_conductores","velocidad_media_kmh",
 		      "pct_ruta_directa","pct_reroutean","pct_metro","modal_shift_acum",
@@ -216,23 +183,28 @@ global {
 		road_weights <- road as_map (each :: each.shape.perimeter / each.speed_coeff);
 		road_network <- road_network with_weights road_weights;
 
-		list<road> ocupadas <- roads_conectadas where (each.nb_people > 0.0 and each.shape intersects zona_peaje);
+		// Velocidad media = flujo libre × coef. de congestión medio de las vías
+		// ocupadas DENTRO de la zona de cobro (fallback: toda la red ocupada).
+		list<road> ocupadas <- (zona_peaje = nil)
+		    ? []
+		    : (roads_conectadas where (each.nb_people > 0.0 and each.shape intersects zona_peaje));
 		if empty(ocupadas) { ocupadas <- roads_conectadas where (each.nb_people > 0.0); }
 		float coef <- empty(ocupadas) ? 1.0 : mean(ocupadas collect each.speed_coeff);
 		velocidad_media <- round(VEL_LIBRE_KMH * coef * 10.0) / 10.0;
 	}
 
 	reflex exportar_metricas when: (cycle mod INTERVALO_LOG = 0) and (cycle > 0) {
-		string archivo <- OUTPUT_PATH + "E0_heterogeneo_metricas.csv";
+		string archivo <- OUTPUT_PATH + "E0_metricas.csv";
 
+		// Cuota modal = snapshot de la intención actual de la flota.
 		list<ConductorBDI> flota <- list(ConductorBDI);
 		int n_directo <- flota count (each.intencion = "RUTA_DIRECTA");
 		int n_reroute <- flota count (each.intencion = "REROUTEAR");
 		int n_metro   <- flota count (each.intencion = "METRO");
 		int total     <- max(1, n_directo + n_reroute + n_metro);
-		float pd  <- n_directo / float(total) * 100.0;
-		float pr  <- n_reroute / float(total) * 100.0;
-		float pm  <- n_metro   / float(total) * 100.0;
+		float pd <- n_directo / float(total) * 100.0;
+		float pr <- n_reroute / float(total) * 100.0;
+		float pm <- n_metro   / float(total) * 100.0;
 
 		int s_directo_alto  <- flota count (each.intencion="RUTA_DIRECTA" and each.nse="ALTO");
 		int s_directo_medio <- flota count (each.intencion="RUTA_DIRECTA" and each.nse="MEDIO");
@@ -247,31 +219,39 @@ global {
 
 		modal_shift_acum <- empty(EstacionMetro) ? 0 : sum(EstacionMetro collect each.modal_shift_total);
 
-		int    hh      <- int(minuto_actual / 60);
-		int    mm      <- minuto_actual mod 60;
+		int    hh       <- int(minuto_actual / 60);
+		int    mm       <- minuto_actual mod 60;
 		string hora_str <- string(hh) + ":" + (mm < 10 ? "0" : "") + string(mm);
 
-		save ["E0_HET", minuto_actual, hora_str, es_hora_pico,
+		save ["E0", minuto_actual, hora_str, es_hora_pico,
 		      length(ConductorBDI), velocidad_media,
 		      round(pd * 10) / 10.0, round(pr * 10) / 10.0, round(pm * 10) / 10.0,
 		      modal_shift_acum, s_restringidos,
-		      s_directo_alto,  s_directo_medio,  s_directo_bajo,
-		      s_metro_alto,    s_metro_medio,    s_metro_bajo,
-		      s_rerouta_alto,  s_rerouta_medio,  s_rerouta_bajo]
+		      s_directo_alto, s_directo_medio, s_directo_bajo,
+		      s_metro_alto,   s_metro_medio,   s_metro_bajo,
+		      s_rerouta_alto, s_rerouta_medio, s_rerouta_bajo]
 		to: archivo format: "csv" rewrite: false;
 	}
 
 	reflex fin_sim when: minuto_actual >= hora_fin_sim {
-		write "SIMULACIÓN COMPLETADA HETEROGÉNEA — vel. final: " + round(velocidad_media) + " km/h";
+		write "SIMULACIÓN E0 COMPLETADA — vel. final: " + round(velocidad_media) + " km/h";
 		do pause;
 	}
 }
 
 species road {
 	float capacity    <- 1 + shape.perimeter / 30;
+	// Los agentes que se pasan al Metro no congestionan la vía (se excluyen).
 	float nb_people   <- 0.0 update: sum((ConductorBDI at_distance 10) where (each.intencion != "METRO") collect each.factor_capacidad_via);
 	float speed_coeff <- 1.0 update: exp(-nb_people / capacity) min: 0.1;
-	aspect default { draw shape  color: #white width: 2; }
+	aspect default {
+		// Mapa de calor de congestión (paleta pastel): el flujo libre es un gris-azulado
+		// claro y neutro que actúa de fondo; solo la congestión (ámbar → coral) resalta.
+		rgb c <- (speed_coeff > 0.6) ? rgb(140, 155, 168)
+		        : ((speed_coeff > 0.35) ? rgb(222, 188, 130) : rgb(220, 130, 120));
+		// Grosor por ocupación: las vías con más tráfico se ven más gruesas.
+		draw shape color: c width: min(6.0, 1.5 + nb_people * 0.4);
+	}
 }
 
 species PuntoControl {
@@ -312,6 +292,7 @@ species EstacionMetro {
 
 species ConductorBDI skills: [moving] {
 
+	// Perfil socioeconómico
 	string nse               <- "MEDIO";
 	float  wtp               <- 1.50;
 	float  w_tiempo          <- 0.35;
@@ -324,17 +305,19 @@ species ConductorBDI skills: [moving] {
 	float  nivel_congestion  <- 0.0;
 	float  umbral_congestion <- 0.55;
 
-	string tipo_vehiculo        <- "AUTO"; 
-	float  factor_capacidad_via <- 1.0;
-	float  tarifa_efectiva      <- 0.0;
+	// Tipo de vehículo
+	string tipo_vehiculo        <- "AUTO";   // MOTO | AUTO | SUV | BUS | CARGA
+	float  factor_capacidad_via <- 1.0;      // peso en road.nb_people
+	float  tarifa_efectiva      <- 0.0;      // tarifa que realmente paga
 	bool   exonerado_peaje      <- false;
 
+	// Estado de movimiento
 	point  destino           <- nil;
 	string intencion         <- "RUTA_DIRECTA";
 	bool   decision_tomada   <- false;
 	int    t_sin_avanzar     <- 0;
 	point  pos_anterior      <- nil;
-	float  dist_ultimo_ciclo <- 0.0;   
+	float  dist_ultimo_ciclo <- 0.0;
 
 	init {
 		float r <- rnd(1.0);
@@ -353,55 +336,46 @@ species ConductorBDI skills: [moving] {
 			speed <- max(10.0, speed - 10.0);
 			umbral_congestion <- 0.70;
 		}
-		
 		restringido_placa <- (rnd(1.0) < PCT_RESTRICCION_PLACA) and (dia_semana >= 1 and dia_semana <= 5);
 		metro_accesible   <- rnd(1.0) < 0.60;
 		pos_anterior      <- location;
 
+		// Propiedades físicas por tipo de vehículo
 		if (tipo_vehiculo = "MOTO") {
-			speed                <- speed + 40.0;   
-			factor_capacidad_via <- 0.3;          
-			exonerado_peaje      <- true;            
-			umbral_congestion    <- max(0.20, umbral_congestion - 0.15); 
-		} else if (tipo_vehiculo = "AUTO") {
-			factor_capacidad_via <- 1.0;          
+			speed                <- speed + 40.0;
+			factor_capacidad_via <- 0.3;
+			exonerado_peaje      <- true;
+			umbral_congestion    <- max(0.20, umbral_congestion - 0.15);
 		} else if (tipo_vehiculo = "SUV") {
-			speed                <- max(20.0, speed - 10.0); 
-			factor_capacidad_via <- 1.5;          
-			wtp                  <- wtp * 1.3;       
+			speed                <- max(20.0, speed - 10.0);
+			factor_capacidad_via <- 1.5;
+			wtp                  <- wtp * 1.3;
 		} else if (tipo_vehiculo = "BUS") {
 			speed                <- max(15.0, speed - 35.0);
 			factor_capacidad_via <- 3.0;
 			exonerado_peaje      <- true;
 			metro_accesible      <- false;
-			restringido_placa    <- false;          
+			restringido_placa    <- false;
 			nse                  <- "BAJO";
 		} else if (tipo_vehiculo = "CARGA") {
 			speed                <- max(10.0, speed - 40.0);
 			factor_capacidad_via <- 2.5;
 			metro_accesible      <- false;
-			restringido_placa    <- false;          
+			restringido_placa    <- false;
 			nse                  <- "BAJO";
 		}
 
-		if (nombre_mapa contains "Sur") {
-			speed <- speed * 0.08; 
-		}
+		if (nombre_mapa contains "Sur") { speed <- speed * 0.08; }
 	}
 
 	reflex percibir {
-		ask PuntoControl at_distance 300 {
-			myself.tarifa_percibida <- self.tarifa_vigente;
-		}
-		tarifa_efectiva <- exonerado_peaje ? 0.0 : tarifa_percibida; 
+		ask PuntoControl at_distance 300 { myself.tarifa_percibida <- self.tarifa_vigente; }
+		tarifa_efectiva <- exonerado_peaje ? 0.0 : tarifa_percibida;
 
 		list<road> vias_cercanas <- road at_distance 200;
-		if not empty(vias_cercanas) {
-			int saturadas      <- length(vias_cercanas where (each.speed_coeff <= 0.5));
-			nivel_congestion   <- saturadas / float(length(vias_cercanas));
-		} else {
-			nivel_congestion   <- 0.0;
-		}
+		nivel_congestion <- empty(vias_cercanas)
+		    ? 0.0
+		    : length(vias_cercanas where (each.speed_coeff <= 0.5)) / float(length(vias_cercanas));
 	}
 
 	reflex deliberar when: not decision_tomada and (
@@ -412,64 +386,35 @@ species ConductorBDI skills: [moving] {
 	}
 
 	action decidir {
+		// El bus siempre toma ruta directa (transporte público de ruta fija).
 		if (tipo_vehiculo = "BUS") {
-			intencion          <- "RUTA_DIRECTA";
-			count_ruta_directa <- count_ruta_directa + 1;
-			chart_ruta_directa <- chart_ruta_directa + 1;
-			count_directo_bajo  <- count_directo_bajo + 1;
-			decision_tomada    <- true;
+			intencion       <- "RUTA_DIRECTA";
+			decision_tomada <- true;
 			return;
 		}
 
+		// Placa restringida: cambio modal al Metro si es accesible, si no rerouteo.
 		if (restringido_placa and minuto_actual >= RESTRICCION_INICIO and minuto_actual <= RESTRICCION_FIN) {
-			count_restringidos <- count_restringidos + 1;
-			chart_restringidos <- chart_restringidos + 1;
 			intencion <- (metro_accesible and not empty(EstacionMetro)) ? "METRO" : "REROUTEAR";
-			
-			if intencion = "METRO" {
-				ask (EstacionMetro closest_to self) {
-					if not saturada { pasajeros_espera <- pasajeros_espera + 1; }
-				}
-				if      (nse = "ALTO")  { count_metro_alto  <- count_metro_alto  + 1; }
-				else if (nse = "MEDIO") { count_metro_medio <- count_metro_medio + 1; }
-				else                    { count_metro_bajo  <- count_metro_bajo  + 1; }
-			} else {
-				if      (nse = "ALTO")  { count_rerouta_alto  <- count_rerouta_alto  + 1; }
-				else if (nse = "MEDIO") { count_rerouta_medio <- count_rerouta_medio + 1; }
-				else                    { count_rerouta_bajo  <- count_rerouta_bajo  + 1; }
+			if (intencion = "METRO") {
+				ask (EstacionMetro closest_to self) { if not saturada { pasajeros_espera <- pasajeros_espera + 1; } }
 			}
 			decision_tomada <- true;
 			return;
 		}
 
+		// Decisión por utilidad multicriterio.
 		float ud <- u_directa();
 		float ur <- u_reroutear();
 		float um <- (not empty(EstacionMetro)) ? u_metro() : 0.0;
 
 		if (ud >= ur and ud >= um) {
-			intencion          <- "RUTA_DIRECTA";
-			count_ruta_directa <- count_ruta_directa + 1;
-			chart_ruta_directa <- chart_ruta_directa + 1;
-			if      (nse = "ALTO")  { count_directo_alto  <- count_directo_alto  + 1; }
-			else if (nse = "MEDIO") { count_directo_medio <- count_directo_medio + 1; }
-			else                    { count_directo_bajo  <- count_directo_bajo  + 1; }
+			intencion <- "RUTA_DIRECTA";
 		} else if (um > ur and metro_accesible and not empty(EstacionMetro)) {
-			intencion   <- "METRO";
-			count_metro <- count_metro + 1;
-			chart_metro <- chart_metro + 1;
-			ask (EstacionMetro closest_to self) {
-				if not saturada { pasajeros_espera <- pasajeros_espera + 1; }
-			}
-			if      (nse = "ALTO")  { count_metro_alto  <- count_metro_alto  + 1; }
-			else if (nse = "MEDIO") { count_metro_medio <- count_metro_medio + 1; }
-			else                    { count_metro_bajo  <- count_metro_bajo  + 1; }
+			intencion <- "METRO";
+			ask (EstacionMetro closest_to self) { if not saturada { pasajeros_espera <- pasajeros_espera + 1; } }
 		} else {
-			intencion       <- "REROUTEAR";
-			count_reroutean <- count_reroutean + 1;
-			chart_reroutean <- chart_reroutean + 1;
-			if      (nse = "ALTO")  { count_rerouta_alto  <- count_rerouta_alto  + 1; }
-			else if (nse = "MEDIO") { count_rerouta_medio <- count_rerouta_medio + 1; }
-			else                    { count_rerouta_bajo  <- count_rerouta_bajo  + 1; }
+			intencion <- "REROUTEAR";
 		}
 		decision_tomada <- true;
 	}
@@ -493,8 +438,9 @@ species ConductorBDI skills: [moving] {
 	}
 
 	reflex mover when: destino != nil {
+		// Placa restringida e intención no-Metro: el vehículo queda inmovilizado.
 		if (restringido_placa and minuto_actual >= RESTRICCION_INICIO and minuto_actual <= RESTRICCION_FIN and intencion != "METRO") {
-			dist_ultimo_ciclo <- 0.0;   
+			dist_ultimo_ciclo <- 0.0;
 			if (cycle mod 300 = 0) {
 				list<road> pool <- empty(roads_conectadas) ? list(road) : roads_conectadas;
 				destino <- any_location_in(one_of(pool));
@@ -505,7 +451,7 @@ species ConductorBDI skills: [moving] {
 
 		dist_ultimo_ciclo <- (pos_anterior != nil) ? (location distance_to pos_anterior) : 0.0;
 		t_sin_avanzar <- (dist_ultimo_ciclo < 1.0) ? t_sin_avanzar + 1 : 0;
-		pos_anterior <- copy(location);
+		pos_anterior  <- copy(location);
 
 		if (location distance_to destino < 150 or t_sin_avanzar > 1200) {
 			list<road> pool  <- empty(roads_conectadas) ? list(road) : roads_conectadas;
@@ -525,17 +471,16 @@ species ConductorBDI skills: [moving] {
 
 	aspect default {
 		rgb col <- #gray;
-		if      (tipo_vehiculo = "MOTO")  { col <- #deepskyblue; }
-		else if (tipo_vehiculo = "AUTO")  { col <- #dodgerblue;  }
-		else if (tipo_vehiculo = "SUV")   { col <- #mediumpurple;}
-		else if (tipo_vehiculo = "BUS")   { col <- #limegreen;   }
-		else if (tipo_vehiculo = "CARGA") { col <- #sienna;      }
+		if      (tipo_vehiculo = "MOTO")  { col <- #deepskyblue;  }
+		else if (tipo_vehiculo = "AUTO")  { col <- #dodgerblue;   }
+		else if (tipo_vehiculo = "SUV")   { col <- #mediumpurple; }
+		else if (tipo_vehiculo = "BUS")   { col <- #limegreen;    }
+		else if (tipo_vehiculo = "CARGA") { col <- #sienna;       }
 
 		if (decision_tomada) {
 			if      (intencion = "REROUTEAR") { col <- #orange; }
 			else if (intencion = "METRO")     { col <- #gold;   }
 		}
-
 		if (restringido_placa and minuto_actual >= RESTRICCION_INICIO and minuto_actual <= RESTRICCION_FIN) { col <- #red; }
 
 		float sz <- 8.0;
@@ -543,28 +488,26 @@ species ConductorBDI skills: [moving] {
 		else if (tipo_vehiculo = "SUV")   { sz <- 10.0; }
 		else if (tipo_vehiculo = "BUS")   { sz <- 14.0; }
 		else if (tipo_vehiculo = "CARGA") { sz <- 12.0; }
+		float tam <- sz * ESCALA_VEHICULO;   // tamaño visible en unidades de mundo (ESCALA es un slider)
 
-		bool dentro <- location intersects zona_peaje;
-		if (dentro) {
-			draw circle(sz) at: location + {0, 0, 5} color: col border: #white;
-		} else {
-			draw circle(sz) at: location + {0, 0, 5} color: rgb(col, 0.45) border: #black;
-		}
+		// Halo de estado (color por tipo / decisión BDI) + icono de auto orientado al rumbo.
+		// El icono da silueta y orientación; el halo conserva la lectura de tipo/decisión.
+		bool dentro <- (zona_peaje != nil) and (location intersects zona_peaje);
+		draw circle(tam * 0.55) at: location + {0, 0, 3} color: rgb(col, dentro ? 0.85 : 0.40) border: (dentro ? #white : #black);
+		draw ICON_VEHICULO size: tam rotate: heading + 180 at: location + {0, 0, 6};
 	}
 }
 
-// ── Experimento E0 ─────────────────────────────────────────────────────────────
 experiment "Simulacion Base Heterogenea" type: gui autorun: false {
 
-	parameter "Motos (~15 %)"              var: NB_MOTOS   min: 0  max: 150 step: 15  category: "Vehículos";
-	parameter "Autos particulares (~55 %)" var: NB_AUTOS   min: 0  max: 300 step: 25  category: "Vehículos";
-	parameter "SUV / 4x4 (~15 %)"         var: NB_SUVS    min: 0  max: 150 step: 15  category: "Vehículos";
-	parameter "Buses / T. público (~10 %)" var: NB_BUSES   min: 0  max: 100 step: 10  category: "Vehículos";
-	parameter "Vehículos de carga (~5 %)"  var: NB_CARGAS  min: 0  max: 50  step: 5   category: "Vehículos";
-	
-	parameter "Día semana (1=Lun,7=Dom)"   var: dia_semana min: 1  max: 7             category: "Sim";
-	parameter "Tarifa AUTO pico USD [EB]" var: TARIFA_PICO_AUTO min: 0.5 max: 3.0 step: 0.25 category: "[EB nominal]";
-	parameter "Seleccionar Entorno Vial:"  var: nombre_mapa category: "Mapa";
+	parameter "Motos (~15 %)"              var: NB_MOTOS   min: 0 max: 150 step: 15 category: "Vehículos";
+	parameter "Autos particulares (~55 %)" var: NB_AUTOS   min: 0 max: 300 step: 25 category: "Vehículos";
+	parameter "SUV / 4x4 (~15 %)"          var: NB_SUVS    min: 0 max: 150 step: 15 category: "Vehículos";
+	parameter "Buses / T. público (~10 %)" var: NB_BUSES   min: 0 max: 100 step: 10 category: "Vehículos";
+	parameter "Vehículos de carga (~5 %)"  var: NB_CARGAS  min: 0 max: 50  step: 5  category: "Vehículos";
+	parameter "Día semana (1=Lun,7=Dom)"   var: dia_semana min: 1 max: 7            category: "Sim";
+	parameter "Seleccionar Entorno Vial:"  var: nombre_mapa                         category: "Mapa";
+	parameter "Tamaño vehículos"           var: ESCALA_VEHICULO min: 2.0 max: 40.0 step: 2.0 category: "Vista";
 
 	float minimum_cycle_duration <- 0.01;
 
@@ -583,18 +526,21 @@ experiment "Simulacion Base Heterogenea" type: gui autorun: false {
 
 			event #mouse_down action: marcar_punto_control;
 
-			overlay position: {18 #px, 18 #px} size: {250 #px, 350 #px}
+			overlay position: {18 #px, 18 #px} size: {250 #px, 412 #px}
 			        background: rgb(15, 17, 22) border: rgb(70, 75, 85) rounded: true {
 				int hh <- int(minuto_actual / 60);
 				int mm <- minuto_actual mod 60;
 				string reloj <- (hh < 10 ? "0" : "") + hh + ":" + (mm < 10 ? "0" : "") + mm;
+				bool   fin_semana <- dia_semana >= 6;
+				string dia_txt    <- (dia_semana <= 5) ? "Lun–Vie" : (dia_semana = 6 ? "Sábado · sin placa" : "Domingo · sin placa");
 
 				draw "SMA · La Carolina" at: {14 #px, 13 #px} anchor: #top_left color: #orange font: font("Arial", 15, #bold);
 				draw "Escenario E0 · Baseline (sin cobro)" at: {14 #px, 33 #px} anchor: #top_left color: rgb(140, 145, 155) font: font("Arial", 9, #plain);
 				draw rectangle(222 #px, 1 #px) at: {125 #px, 52 #px} color: rgb(55, 60, 70);
 
 				draw reloj at: {14 #px, 60 #px} anchor: #top_left color: #white font: font("Arial", 26, #bold);
-				draw (es_hora_pico ? "● PICO" : "valle") at: {150 #px, 72 #px} anchor: #top_left color: (es_hora_pico ? #orange : rgb(110, 115, 125)) font: font("Arial", 12, #bold);
+				draw (es_hora_pico ? "● PICO" : "valle") at: {150 #px, 66 #px} anchor: #top_left color: (es_hora_pico ? #orange : rgb(110, 115, 125)) font: font("Arial", 12, #bold);
+				draw dia_txt at: {150 #px, 86 #px} anchor: #top_left color: (fin_semana ? rgb(230, 180, 90) : rgb(140, 145, 155)) font: font("Arial", 9, #bold);
 
 				draw "VELOCIDAD" at: {14 #px, 102 #px} anchor: #top_left color: rgb(130, 135, 145) font: font("Arial", 8, #bold);
 				draw ("" + velocidad_media + " km/h") at: {14 #px, 115 #px} anchor: #top_left color: #white font: font("Arial", 13, #bold);
@@ -618,14 +564,30 @@ experiment "Simulacion Base Heterogenea" type: gui autorun: false {
 					draw string(item[0]) at: {34 #px, y} anchor: #left_center color: rgb(205, 208, 214) font: font("Arial", 10, #plain);
 					y <- y + 20 #px;
 				}
+
+				// ── Línea de tiempo del día (06–22 h) con franjas pico sombreadas ──
+				y <- y + 10 #px;
+				draw rectangle(222 #px, 1 #px) at: {125 #px, y} color: rgb(55, 60, 70);
+				y <- y + 14 #px;
+				draw "PROGRESO DEL DÍA · 06–22 h" at: {14 #px, y} anchor: #top_left color: rgb(125, 130, 140) font: font("Arial", 9, #bold);
+				y <- y + 16 #px;
+				draw rectangle(222 #px, 6 #px) at: {125 #px, y} color: rgb(45, 50, 60);           // pista
+				draw rectangle(41 #px, 6 #px)  at: {49 #px, y}  color: rgb(120, 90, 40);           // pico 07–10
+				draw rectangle(41 #px, 6 #px)  at: {187 #px, y} color: rgb(120, 90, 40);           // pico 17–20
+				draw circle(5 #px) at: {14 #px + ((minuto_actual - 360) / 960.0) * 222 #px, y}     // hora actual
+				     color: (es_hora_pico ? #orange : #white) border: rgb(20, 22, 28);
 			}
 
 			light #ambient intensity: 130;
-			species road refresh: false;
+			species road refresh: true;
 
-			graphics "Zona La Carolina" {
-				draw zona_peaje color: rgb(rgb(46, 109, 164), 0.10) border: rgb(120, 170, 220);
-				draw (nombre_mapa contains "Sur" ? "ZONA QUICENTRO SUR" : "ZONA LA CAROLINA") at: lbl_zona anchor: #left_center color: rgb(140, 175, 215) font: font("Arial", 11, #bold);
+			graphics "Zona de cobro" {
+				if (zona_peaje != nil) {
+					draw zona_peaje color: rgb(rgb(60, 120, 205), 0.22) border: rgb(120, 190, 245) width: 4;
+					// Sombra para legibilidad sobre la red vial, luego el texto.
+					draw "ZONA DE COBRO" at: lbl_zona + {12, 12, 0} anchor: #left_center color: rgb(0, 0, 0, 0.7) font: font("Arial", 11, #bold);
+					draw "ZONA DE COBRO" at: lbl_zona anchor: #left_center color: rgb(170, 200, 235) font: font("Arial", 11, #bold);
+				}
 			}
 
 			species PuntoControl;
