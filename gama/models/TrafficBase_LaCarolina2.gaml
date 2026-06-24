@@ -103,7 +103,10 @@ global {
 	float VEL_LIBRE_KMH <- 50.0;   // flujo libre; la velocidad media emergente = VEL_LIBRE × coef. de congestión
 
 	// Icono de vehículo (se carga una sola vez). Disponibles: voit_blue / voit_red / voit.png (negro).
-	image_file ICON_VEHICULO <- image_file("../includes/voit_blue.png");
+	image_file ICON_VEHICULO <- image_file("../includes/icons/voit.png");
+	image_file ICON_MOTO <- image_file("../includes/icons/moto.png");
+	image_file ICON_BUS <- image_file("../includes/icons/bus.png");
+	image_file ICON_CARGA <- image_file("../includes/icons/carga.png");
 	// Tamaño de los vehículos en unidades de mundo (slider "Vista"), ajustable en caliente.
 	float ESCALA_VEHICULO <- 10.0;
 
@@ -311,6 +314,7 @@ species ConductorBDI skills: [moving] {
 	float  tarifa_efectiva      <- 0.0;      // tarifa que realmente paga
 	bool   exonerado_peaje      <- false;
 
+
 	// Estado de movimiento
 	point  destino           <- nil;
 	string intencion         <- "RUTA_DIRECTA";
@@ -341,15 +345,18 @@ species ConductorBDI skills: [moving] {
 		pos_anterior      <- location;
 
 		// Propiedades físicas por tipo de vehículo
+
 		if (tipo_vehiculo = "MOTO") {
 			speed                <- speed + 40.0;
 			factor_capacidad_via <- 0.3;
 			exonerado_peaje      <- true;
 			umbral_congestion    <- max(0.20, umbral_congestion - 0.15);
+			
 		} else if (tipo_vehiculo = "SUV") {
 			speed                <- max(20.0, speed - 10.0);
 			factor_capacidad_via <- 1.5;
 			wtp                  <- wtp * 1.3;
+			
 		} else if (tipo_vehiculo = "BUS") {
 			speed                <- max(15.0, speed - 35.0);
 			factor_capacidad_via <- 3.0;
@@ -363,6 +370,7 @@ species ConductorBDI skills: [moving] {
 			metro_accesible      <- false;
 			restringido_placa    <- false;
 			nse                  <- "BAJO";
+			
 		}
 
 		if (nombre_mapa contains "Sur") { speed <- speed * 0.08; }
@@ -489,12 +497,41 @@ species ConductorBDI skills: [moving] {
 		else if (tipo_vehiculo = "BUS")   { sz <- 14.0; }
 		else if (tipo_vehiculo = "CARGA") { sz <- 12.0; }
 		float tam <- sz * ESCALA_VEHICULO;   // tamaño visible en unidades de mundo (ESCALA es un slider)
-
+		
 		// Halo de estado (color por tipo / decisión BDI) + icono de auto orientado al rumbo.
 		// El icono da silueta y orientación; el halo conserva la lectura de tipo/decisión.
+		
+		
+		
 		bool dentro <- (zona_peaje != nil) and (location intersects zona_peaje);
 		draw circle(tam * 0.55) at: location + {0, 0, 3} color: rgb(col, dentro ? 0.85 : 0.40) border: (dentro ? #white : #black);
-		draw ICON_VEHICULO size: tam rotate: heading + 180 at: location + {0, 0, 6};
+		if (tipo_vehiculo = "MOTO") {
+	    draw image("../includes/icons/moto.png")
+	        size: tam
+	        rotate: heading + 180
+	        at: location + {0,0,6};
+
+		} else if (tipo_vehiculo = "BUS") {
+		
+		    draw image("../includes/icons/bus.png")
+		        size: tam
+		        rotate: heading + 180
+		        at: location + {0,0,6};
+		
+		} else if (tipo_vehiculo = "CARGA") {
+		
+		    draw image("../includes/icons/carga.png")
+		        size: tam
+		        rotate: heading + 180
+		        at: location + {0,0,6};
+		
+		} else {
+		
+		    draw image("../includes/icons/voit.png")
+		        size: tam
+		        rotate: heading + 180
+		        at: location + {0,0,6};
+		}
 	}
 }
 

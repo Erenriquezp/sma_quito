@@ -119,7 +119,7 @@ global {
 	float VEL_LIBRE_KMH <- 50.0;   // flujo libre; la velocidad media emergente = VEL_LIBRE × coef. de congestión
 
 	// Icono de vehículo (se carga una sola vez). Disponibles: voit_blue / voit_red / voit.png (negro).
-	image_file ICON_VEHICULO <- image_file("../includes/voit_blue.png");
+	image_file ICON_VEHICULO <- image_file("../includes/icons/voit_blue.png");
 	// Tamaño de los vehículos en unidades de mundo (slider "Vista"). El tamaño visible
 	// depende de la escala del mapa, por eso es ajustable en caliente.
 	float ESCALA_VEHICULO <- 10.0;
@@ -669,7 +669,33 @@ species ConductorBDI skills: [moving] {
 		// El icono da silueta y orientación; el halo conserva la lectura de tipo/decisión.
 		bool dentro <- (zona_peaje != nil) and (location intersects zona_peaje);
 		draw circle(tam * 0.55) at: location + {0, 0, 3} color: rgb(col, dentro ? 0.85 : 0.40) border: (dentro ? #white : #black);
-		draw ICON_VEHICULO size: tam rotate: heading + 180 at: location + {0, 0, 6};
+				if (tipo_vehiculo = "MOTO") {
+	    draw image("../includes/icons/moto.png")
+	        size: tam
+	        rotate: heading + 180
+	        at: location + {0,0,6};
+
+		} else if (tipo_vehiculo = "BUS") {
+		
+		    draw image("../includes/icons/bus.png")
+		        size: tam
+		        rotate: heading + 180
+		        at: location + {0,0,6};
+		
+		} else if (tipo_vehiculo = "CARGA") {
+		
+		    draw image("../includes/icons/carga.png")
+		        size: tam
+		        rotate: heading + 180
+		        at: location + {0,0,6};
+		
+		} else {
+		
+		    draw image("../includes/icons/voit.png")
+		        size: tam
+		        rotate: heading + 180
+		        at: location + {0,0,6};
+		}
 	}
 }
 
