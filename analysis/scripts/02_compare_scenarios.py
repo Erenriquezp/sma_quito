@@ -68,19 +68,28 @@ def calcular_metricas_globales(df: pd.DataFrame) -> dict:
     pico    = df[df["es_hora_pico"] == True]
     no_pico = df[df["es_hora_pico"] == False]
 
+    minutos_unicos = sorted(df["minuto"].unique())
+    horas_simulacion = len(minutos_unicos) / 4.0 if len(minutos_unicos) > 0 else np.nan
+
+    recaudacion_por_run = df.groupby("archivo_fuente")["recaudacion_acum_usd"].max()
+    recaudacion_promedio_total = recaudacion_por_run.mean() if len(recaudacion_por_run) > 0 else np.nan
+    recaudacion_promedio_hora = (recaudacion_promedio_total / horas_simulacion
+                                 if horas_simulacion > 0 else np.nan)
+
     return {
-        "flujo_promedio_total":    df["flujo_poligono"].mean(),
-        "flujo_promedio_pico":     pico["flujo_poligono"].mean() if len(pico) > 0 else np.nan,
-        "flujo_promedio_no_pico":  no_pico["flujo_poligono"].mean() if len(no_pico) > 0 else np.nan,
-        "velocidad_promedio_total": df["velocidad_media_kmh"].mean(),
-        "velocidad_promedio_pico":  pico["velocidad_media_kmh"].mean() if len(pico) > 0 else np.nan,
-        "pct_metro_promedio":       df["pct_metro"].mean(),
-        "pct_metro_pico":           pico["pct_metro"].mean() if len(pico) > 0 else np.nan,
-        "pct_reroutean_promedio":   df["pct_reroutean"].mean(),
-        "flujo_externo_promedio":   df["flujo_externo"].mean(),
-        # recaudacion_acum_usd es un ACUMULADOR monótono: el total es el valor
-        # final del run (max), no la suma de todos los intervalos.
-        "recaudacion_total":        df["recaudacion_acum_usd"].max(),
+        "flujo_promedio_total":          df["flujo_poligono_hora"].mean(),
+        "flujo_promedio_pico":           pico["flujo_poligono_hora"].mean() if len(pico) > 0 else np.nan,
+        "flujo_promedio_no_pico":        no_pico["flujo_poligono_hora"].mean() if len(no_pico) > 0 else np.nan,
+        "velocidad_promedio_total":      df["velocidad_media_kmh"].mean(),
+        "velocidad_promedio_pico":       pico["velocidad_media_kmh"].mean() if len(pico) > 0 else np.nan,
+        "pct_metro_promedio":            df["pct_metro"].mean(),
+        "pct_metro_pico":                pico["pct_metro"].mean() if len(pico) > 0 else np.nan,
+        "pct_reroutean_promedio":        df["pct_reroutean"].mean(),
+        "flujo_externo_promedio":        df["flujo_externo_hora"].mean(),
+        "gini_modal_promedio":           df["gini_modal_metro"].mean() if "gini_modal_metro" in df.columns else np.nan,
+        "gini_modal_pico":               pico["gini_modal_metro"].mean() if "gini_modal_metro" in pico.columns and len(pico) > 0 else np.nan,
+        "recaudacion_total_promedio":    recaudacion_promedio_total,
+        "recaudacion_promedio_hora":     recaudacion_promedio_hora,
     }
 
 
@@ -141,10 +150,13 @@ def generar_tabla_comparativa(m_e0: dict, m_eb: dict) -> pd.DataFrame:
 
     # Flujo vehicular (menos = mejor para reducir congestión)
     fila("flujo_total", "Flujo promedio en polígono (total)",
-         m_e0["flujo_promedio_total"], m_eb["flujo_promedio_total"], "veh/15min")
+         m_e0["flujo_promedio_total"], m_eb["flujo_promedio_total"], "veh/h")
 
     fila("flujo_pico", "Flujo promedio en polígono (hora pico)",
-         m_e0["flujo_promedio_pico"], m_eb["flujo_promedio_pico"], "veh/15min")
+         m_e0["flujo_promedio_pico"], m_eb["flujo_promedio_pico"], "veh/h")
+
+    fila("flujo_externo", "Desplazamiento periférico (flujo externo)",
+         m_e0["flujo_externo_promedio"], m_eb["flujo_externo_promedio"], "veh/h")
 
     # Velocidad (más = mejor)
     fila("velocidad_total", "Velocidad media en polígono (total)",
@@ -164,9 +176,17 @@ def generar_tabla_comparativa(m_e0: dict, m_eb: dict) -> pd.DataFrame:
          m_e0["pct_metro_pico"], m_eb["pct_metro_pico"], "%",
          mayor_es_mejor=True)
 
-    # Desplazamiento periférico (menos = mejor)
-    fila("flujo_externo", "Flujo en vías periféricas (desplazamiento)",
-         m_e0["flujo_externo_promedio"], m_eb["flujo_externo_promedio"], "veh/15min")
+    fila("gini_modal_promedio", "Equidad socioeconómica — Δ Gini modal (promedio)",
+         m_e0["gini_modal_promedio"], m_eb["gini_modal_promedio"], "índice 0–1",
+         mayor_es_mejor=False)
+
+    fila("gini_modal_pico", "Equidad socioeconómica — Δ Gini modal (hora pico)",
+         m_e0["gini_modal_pico"], m_eb["gini_modal_pico"], "índice 0–1",
+         mayor_es_mejor=False)
+
+    fila("recaudacion_por_hora", "Recaudación estimada por hora simulada",
+         m_e0["recaudacion_promedio_hora"], m_eb["recaudacion_promedio_hora"], "USD/h",
+         mayor_es_mejor=True)
 
     return pd.DataFrame(filas)
 

@@ -11,6 +11,7 @@ Figuras generadas:
   Fig 3: Distribución de decisiones BDI (gráfica de barras apiladas)
   Fig 4: Modal shift comparativo E0 vs EB (barras por franja horaria)
   Fig 5: Benchmark — comparación con London Congestion Charge
+  Fig 6: Equidad modal y recaudación por hora simulada
 
 Uso:
     python 03_generate_figures.py
@@ -78,12 +79,12 @@ def cargar_datos() -> tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame]:
 def agregar_por_hora(df: pd.DataFrame) -> pd.DataFrame:
     """Agrupa datos por minuto para graficar serie temporal."""
     return df.groupby("minuto").agg({
-        "flujo_poligono":    ["mean", "std"],
+        "flujo_poligono_hora": ["mean", "std"],
         "velocidad_media_kmh": ["mean", "std"],
-        "pct_metro":         ["mean", "std"],
-        "pct_reroutean":     ["mean", "std"],
-        "pct_pagan":         ["mean", "std"],
-        "flujo_externo":     ["mean", "std"],
+        "pct_metro":          ["mean", "std"],
+        "pct_reroutean":      ["mean", "std"],
+        "pct_pagan":          ["mean", "std"],
+        "flujo_externo_hora": ["mean", "std"],
     }).reset_index()
 
 
@@ -99,7 +100,7 @@ def agregar_franjas(df: pd.DataFrame) -> pd.DataFrame:
     df = df.copy()
     df["franja"] = df["minuto"].apply(franja)
     return df.groupby("franja")[
-        ["flujo_poligono", "velocidad_media_kmh", "pct_metro", "pct_reroutean"]
+        ["flujo_poligono_hora", "velocidad_media_kmh", "pct_metro", "pct_reroutean"]
     ].mean().reset_index()
 
 
@@ -132,30 +133,30 @@ def fig1_flujo(e0_agg, eb_agg):
     x_e0 = e0_agg["minuto"] / 60
     x_eb = eb_agg["minuto"] / 60
 
-    ax.plot(x_e0, e0_agg[("flujo_poligono", "mean")],
+    ax.plot(x_e0, e0_agg[("flujo_poligono_hora", "mean")],
             color=COLOR_E0, lw=2, label="E0 — Baseline (sin peaje)")
     ax.fill_between(x_e0,
-        e0_agg[("flujo_poligono", "mean")] - e0_agg[("flujo_poligono", "std")],
-        e0_agg[("flujo_poligono", "mean")] + e0_agg[("flujo_poligono", "std")],
+        e0_agg[("flujo_poligono_hora", "mean")] - e0_agg[("flujo_poligono_hora", "std")],
+        e0_agg[("flujo_poligono_hora", "mean")] + e0_agg[("flujo_poligono_hora", "std")],
         alpha=0.15, color=COLOR_E0)
 
-    ax.plot(x_eb, eb_agg[("flujo_poligono", "mean")],
+    ax.plot(x_eb, eb_agg[("flujo_poligono_hora", "mean")],
             color=COLOR_EB, lw=2, linestyle="--", label="EB — Peaje por franja horaria")
     ax.fill_between(x_eb,
-        eb_agg[("flujo_poligono", "mean")] - eb_agg[("flujo_poligono", "std")],
-        eb_agg[("flujo_poligono", "mean")] + eb_agg[("flujo_poligono", "std")],
+        eb_agg[("flujo_poligono_hora", "mean")] - eb_agg[("flujo_poligono_hora", "std")],
+        eb_agg[("flujo_poligono_hora", "mean")] + eb_agg[("flujo_poligono_hora", "std")],
         alpha=0.15, color=COLOR_EB)
 
     sombrear_pico(ax)
     hora_ticks(ax)
-    ax.set_ylabel("Vehículos en el polígono")
+    ax.set_ylabel("Vehículos por hora en el polígono")
     ax.set_title("Fig. 1 — Flujo vehicular en el sector La Carolina: E0 vs EB")
     ax.legend(loc="upper right")
     ax.grid(True, axis="y")
 
     # Anotación: reducción en hora pico
-    pico_e0 = e0_agg[(e0_agg["minuto"] >= 420) & (e0_agg["minuto"] <= 600)][("flujo_poligono", "mean")].mean()
-    pico_eb = eb_agg[(eb_agg["minuto"] >= 420) & (eb_agg["minuto"] <= 600)][("flujo_poligono", "mean")].mean()
+    pico_e0 = e0_agg[(e0_agg["minuto"] >= 420) & (e0_agg["minuto"] <= 600)][("flujo_poligono_hora", "mean")].mean()
+    pico_eb = eb_agg[(eb_agg["minuto"] >= 420) & (eb_agg["minuto"] <= 600)][("flujo_poligono_hora", "mean")].mean()
     if pico_e0 > 0:
         reduccion = abs(pico_eb - pico_e0) / pico_e0 * 100
         ax.annotate(f"−{reduccion:.0f}% en hora pico",
@@ -268,8 +269,8 @@ def fig5_benchmark(e0: pd.DataFrame, eb: pd.DataFrame):
     fig, ax = plt.subplots(figsize=(9, 5))
 
     # Calcular métricas del modelo
-    pico_e0_flujo = e0[e0["es_hora_pico"] == True]["flujo_poligono"].mean()
-    pico_eb_flujo = eb[eb["es_hora_pico"] == True]["flujo_poligono"].mean()
+    pico_e0_flujo = e0[e0["es_hora_pico"] == True]["flujo_poligono_hora"].mean()
+    pico_eb_flujo = eb[eb["es_hora_pico"] == True]["flujo_poligono_hora"].mean()
     red_vehicular = abs(pico_eb_flujo - pico_e0_flujo) / pico_e0_flujo * 100 if pico_e0_flujo > 0 else 0
 
     pico_e0_vel = e0[e0["es_hora_pico"] == True]["velocidad_media_kmh"].mean()
@@ -314,6 +315,64 @@ def fig5_benchmark(e0: pd.DataFrame, eb: pd.DataFrame):
     guardar(fig, "fig5_benchmark_londres")
 
 
+def calcular_recaudacion_por_hora(df: pd.DataFrame) -> float:
+    archivos = df["archivo_fuente"].unique()
+    valores = []
+    for archivo in archivos:
+        subset = df[df["archivo_fuente"] == archivo]
+        if subset.empty:
+            continue
+        total_horas = subset["minuto"].nunique() / 4.0
+        total_recaudacion = subset["recaudacion_acum_usd"].max()
+        if total_horas > 0:
+            valores.append(total_recaudacion / total_horas)
+    return float(np.mean(valores)) if valores else 0.0
+
+
+def fig6_equidad_recaudacion(e0: pd.DataFrame, eb: pd.DataFrame):
+    fig, axes = plt.subplots(1, 2, figsize=(12, 5))
+
+    gini_e0 = e0["gini_modal_metro"].mean()
+    gini_eb = eb["gini_modal_metro"].mean()
+    rec_hora_e0 = calcular_recaudacion_por_hora(e0)
+    rec_hora_eb = calcular_recaudacion_por_hora(eb)
+
+    x = np.arange(2)
+    ancho = 0.35
+
+    axes[0].bar(x - ancho/2, [gini_e0, gini_eb], ancho,
+                color=[COLOR_E0, COLOR_EB], edgecolor="white")
+    axes[0].set_xticks(x)
+    axes[0].set_xticklabels(["E0 — Baseline", "EB — Peaje"])
+    axes[0].set_ylabel("Índice Gini modal")
+    axes[0].set_title("Equidad socioeconómica — Gini modal promedio")
+    axes[0].grid(True, axis="y", alpha=0.3)
+
+    for rect, valor in zip(axes[0].patches, [gini_e0, gini_eb]):
+        axes[0].annotate(f"{valor:.2f}",
+                         xy=(rect.get_x() + rect.get_width() / 2, rect.get_height()),
+                         xytext=(0, 3), textcoords="offset points",
+                         ha="center", va="bottom", fontsize=9)
+
+    axes[1].bar(x - ancho/2, [rec_hora_e0, rec_hora_eb], ancho,
+                color=[COLOR_E0, COLOR_EB], edgecolor="white")
+    axes[1].set_xticks(x)
+    axes[1].set_xticklabels(["E0 — Baseline", "EB — Peaje"])
+    axes[1].set_ylabel("USD/h")
+    axes[1].set_title("Recaudación estimada por hora simulada")
+    axes[1].grid(True, axis="y", alpha=0.3)
+
+    for rect, valor in zip(axes[1].patches, [rec_hora_e0, rec_hora_eb]):
+        axes[1].annotate(f"${valor:.2f}",
+                         xy=(rect.get_x() + rect.get_width() / 2, rect.get_height()),
+                         xytext=(0, 3), textcoords="offset points",
+                         ha="center", va="bottom", fontsize=9)
+
+    fig.suptitle("Fig. 6 — Equidad modal y recaudación por hora simulada",
+                 fontsize=13, fontweight="bold", y=1.02)
+    guardar(fig, "fig6_equidad_recaudacion")
+
+
 def main():
     print("=" * 60)
     print("  Generación de figuras para el paper — SMA Quito")
@@ -330,8 +389,9 @@ def main():
     fig3_decisiones(e0, eb)
     fig4_modal_shift(e0, eb)
     fig5_benchmark(e0, eb)
+    fig6_equidad_recaudacion(e0, eb)
 
-    print(f"\n[DONE] 5 figuras guardadas en: {FIGURES_DIR}")
+    print(f"\n[DONE] 6 figuras guardadas en: {FIGURES_DIR}")
     print("       Formatos: .png (para visualización) y .pdf (para Overleaf)")
     print("\nPara incluir en Overleaf:")
     print("  \\includegraphics[width=\\linewidth]{figures/fig1_flujo_vehicular}")
