@@ -79,6 +79,21 @@ COLUMNAS_NSE = [
 ]
 
 
+def calcular_gini(values: np.ndarray) -> float:
+    """
+    Calcula el índice de Gini para una colección de valores no negativos.
+    """
+    values = np.asarray(values, dtype=float)
+    if values.size == 0:
+        return 0.0
+    values = np.sort(values)
+    if np.all(values == 0):
+        return 0.0
+    n = len(values)
+    cum = np.cumsum(values)
+    return float((n + 1 - 2 * np.sum(cum / cum[-1])) / n)
+
+
 # ─────────────────────────────────────────────────────────────────────────────
 def cargar_runs(escenario: str) -> pd.DataFrame:
     """
@@ -208,6 +223,46 @@ def agregar_columnas_derivadas(df: pd.DataFrame) -> pd.DataFrame:
                           + df["rerouta_nse_medio"]
                           + df["rerouta_nse_bajo"])
     df["pct_pagan"] = df["pct_ruta_directa"]
+
+    # Convertir conteos por intervalo a tasas por hora para las métricas esperadas.
+    df["flujo_poligono_hora"] = df["flujo_poligono"] * 4
+    df["flujo_externo_hora"] = df["flujo_externo"] * 4
+
+    # Equidad modal: participación Metro por NSE y un índice Gini modal.
+    df["total_nse_alto"] = (df["directo_nse_alto"]
+                           + df["metro_nse_alto"]
+                           + df["rerouta_nse_alto"])
+    df["total_nse_medio"] = (df["directo_nse_medio"]
+                            + df["metro_nse_medio"]
+                            + df["rerouta_nse_medio"])
+    df["total_nse_bajo"] = (df["directo_nse_bajo"]
+                           + df["metro_nse_bajo"]
+                           + df["rerouta_nse_bajo"])
+
+    df["metro_share_nse_alto"] = np.where(
+        df["total_nse_alto"] > 0,
+        df["metro_nse_alto"] / df["total_nse_alto"],
+        0.0
+    )
+    df["metro_share_nse_medio"] = np.where(
+        df["total_nse_medio"] > 0,
+        df["metro_nse_medio"] / df["total_nse_medio"],
+        0.0
+    )
+    df["metro_share_nse_bajo"] = np.where(
+        df["total_nse_bajo"] > 0,
+        df["metro_nse_bajo"] / df["total_nse_bajo"],
+        0.0
+    )
+
+    df["gini_modal_metro"] = df.apply(
+        lambda row: calcular_gini([
+            row["metro_share_nse_alto"],
+            row["metro_share_nse_medio"],
+            row["metro_share_nse_bajo"],
+        ]),
+        axis=1,
+    )
     return df
 
 
