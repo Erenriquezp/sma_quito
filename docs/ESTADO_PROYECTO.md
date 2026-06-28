@@ -1,78 +1,81 @@
 # Estado del Proyecto
 
-> Foto del proyecto frente a sus objetivos (`SMA.md §3.2`). **Última revisión:** 20 jun 2026.
-> Para el detalle histórico ver `INFORME_CAMBIOS_V2.md` y los commits.
+> Foto del proyecto frente a sus objetivos (`SMA.md §3.2`). **Última revisión:** 27 jun 2026.
+> Detalle histórico en `INFORME_CAMBIOS_V2.md` y los commits.
 
 ## En una línea
 
-Arquitectura, modelos y pipeline **completos**. El único bloqueante de resultados es **correr
-ambos escenarios completos (06:00–22:00)** con los modelos finales: hoy solo hay corridas
-parciales de la mañana y el pipeline cae en datos sintéticos.
+Modelos finales (`*2`), pipeline y paper completos. Las tarifas diferenciadas por tipo y el
+peaje dinámico ya están **implementados y validados en código**. El bloqueante real es
+**una corrida completa de EB (06:00–22:00)** con el modelo actual: la última se cortó a las 7:45.
 
 ---
 
 ## Avance por objetivo (`SMA.md §3.2`)
 
-| # | Objetivo | Estado | Qué falta |
-|---|---|:--:|---|
-| **OE1** | Polígono con datos GIS reales | 🟢 Casi | Polígono de cobro como **capa de área GIS** para el paper; densidad **INEC** explícita. |
-| **OE2** | Conductores BDI por NSE, 3 decisiones | ✅ Completo | — |
-| **OE3** | Tercera placa + calibración AMT | 🟡 Parcial | **Calibración formal AMT**: CSV de parámetros BDI + tabla (hoy *hardcoded*). |
-| **OE4** | Ejecutar y comparar E0 vs EB | 🔴 Bloqueado | **Corridas completas** (ver abajo) + métrica de **equidad (Δ Gini)**. |
-| **OE5** | Paper Overleaf (IEEE) | 🟡 Pendiente | Plantilla LaTeX + redactar las 6 secciones (`SMA.md §15`); Resultados/Discusión dependen de OE4. |
+| # | Objetivo | Estado |
+|---|---|:--:|
+| **OE1** | Polígono con datos GIS reales | 🟢 Casi |
+| **OE2** | Conductores BDI por NSE + tipo de vehículo, 3 decisiones | ✅ |
+| **OE3** | Tercera placa + calibración AMT | 🟡 Parcial |
+| **OE4** | Ejecutar y comparar E0 vs EB | 🟡 Parcial |
+| **OE5** | Paper (IEEE) | 🟡 Pendiente |
 
 ---
 
-## Lo que falta
+## Ya resuelto ✅
 
-### 🔴 Bloqueante único — datos completos
-
-Correr **E0 y EB (modelos `*2` finales)** completos (06:00–22:00, hasta `do pause`), generando
-`E0_metricas.csv` y `EB_metricas.csv`, y regenerar el pipeline (`01→02→03`). Los CSV actuales son
-parciales y de los modelos legado; hasta regenerarlos, `01` cae en **datos sintéticos**.
-
-Desbloquea: estabilizar el % de reducción (osciló −18…−27 % en parciales), incluir el **pico
-vespertino** (17–20 h, hoy ausente) y dar potencia a los t-tests.
-
-### 🟡 Análisis y paper
-
-- Figura de **equidad NSE (Δ Gini modal)** con las columnas `*_corr` → cierra OE4.
-- Figura de **recaudación y tarifa dinámica** del GestorAMT (datos disponibles en EB).
-- **Plantilla LaTeX Overleaf (IEEE)** con las 6 secciones de `SMA.md §15` → OE5.
-- Sección **Discusión** con el benchmark Londres.
-
-### 🟢 Entregables y calidad
-
-- **CSV de parámetros BDI** por NSE + **tabla de calibración AMT** → cierra OE3.
-- **Polígono de cobro como capa GIS** + densidad INEC → cierra OE1.
-- **Persistir la zona configurable** (shapefile/CSV de puntos de control) para que los modelos
-  `*2` sean reproducibles fuera del modo interactivo (hoy los puntos por clic no se guardan).
+- **Pipeline `01→02→03`** corriendo con datos reales (tablas, t-tests, Δ Gini, 7 figuras).
+- **Paper** (`PAPER.md`) y análisis (`ANALISIS_RESULTADOS.md`) alineados al modelo final.
+- **Frente A — tarifas diferenciadas por tipo:** implementado y validado (recaudación por tipo en
+  el CSV; SUV/Carga pagan ≈1.5× el auto; Moto/Bus exentos).
+- **Frente B — peaje dinámico:** gestor corregido (densidad v/c, umbrales recalibrados, sliders).
+  Validado: `tarifa_vigente` ya varía en la corrida (antes clavada en $0/$2).
+- **Calibración (OE3):** `analysis/calibracion_parametros.csv` + `docs/CALIBRACION_PARAMETROS.md`.
+- **C2 — guardas de datos sintéticos:** `01 --strict` aborta si falta un CSV real; las figuras (03)
+  llevan marca de agua "DATOS SINTÉTICOS" cuando los datos no son reales. (De paso, `fig4` ahora
+  tolera corridas parciales sin romperse.)
 
 ---
 
-## Correcciones pendientes 🔧
+## Lo que falta de verdad
 
-| # | Tema | Sev. | Acción |
-|---|---|:--:|---|
-| C2 | `01` inventa datos sintéticos si falta un CSV → figuras 100 % falsas sin avisar. | 🟠 | Flag `--strict` que aborte + marca de agua "DATOS SINTÉTICOS". |
-| C3 | Rama `SUSPENDER` del GestorAMT es código muerto (saturación nunca llega a 0.85). | 🔵 | Bajar la capacidad a la escala de agentes, o documentar que es ilustrativa. |
-| C4 | Consultas `at_distance` cuadráticas; lento si se sube a 500 agentes. | 🔵 | Cachear vecindarios / espaciar percepción. Solo para corridas grandes. |
-| C5 | Conviven 4 modelos; un cambio de comportamiento debe replicarse E0↔EB a mano. | 🔵 | Considerar eliminar los legado si no se usan. |
+### 1. 🔴 Corrida completa de EB — bloqueante
 
-> **Sincronía al agregar métricas:** tocar tres sitios — header `save [...]` del `init`, fila de
-> datos en `exportar_metricas` y `COLUMNAS_*` en `01_process_results.py`.
+La última corrida de EB se **cortó a las 7:45** (7 filas en vez de 64), así que E0 (día completo)
+y EB no son comparables todavía. Hay que correr EB en GAMA hasta el `do pause` de las 22:00 con
+los defaults actuales del gestor (`vel. óptima = 40`, `densidad alta = 0.25`), colocando los 5
+puntos de control C# por doble clic al inicio. Luego regenerar `01→02→03`.
+
+Desbloquea: tablas y `fig1–fig7` definitivas, recaudación dinámica por tipo, y la actualización de
+Resultados/Discusión en `PAPER.md` con datos reales de A+B.
+
+### 2. 🟠 Frente C — reproducibilidad en batch
+
+Los 5 peajes se colocan por **doble clic y no se persisten**; la `zona_peaje` es su envolvente y la
+velocidad se mide dentro. Otra colocación → otros resultados, y los modelos `*2` no corren en
+autorun/batch. **Acción:** persistir los puntos (shapefile/CSV) y cargarlos en `init`.
+
+### 3. 🟡 OE5 — paper a Overleaf
+
+`PAPER.md` está completo en Markdown; falta **portarlo a LaTeX/Overleaf (IEEE)** e insertar las
+figuras finales.
+
+### 4. 🟢 OE3 — calibración AMT formal (hecho)
+
+Generado el artefacto de trazabilidad: `analysis/calibracion_parametros.csv` (43 parámetros) y la
+versión legible `docs/CALIBRACION_PARAMETROS.md`, que clasifican cada valor por origen (Empírico /
+Aproximado / Propuesta / Calibrado / Supuesto / Diseño) con su fuente. Pendiente solo **citar la
+tabla en la Metodología del paper**.
 
 ---
 
-## Ruta crítica al paper
+## Correcciones menores 🔵
 
-```
-[🔴] Correr E0 + EB (modelos *2) completos (06:00–22:00)
-        └─→ Regenerar pipeline con datos reales (01→02→03)
-                ├─→ Tablas + Fig1–Fig5 definitivas
-                ├─→ Fig equidad NSE (Δ Gini) + Fig recaudación/tarifa
-                └─→ Resultados → Discusión (benchmark Londres)
+| # | Tema | Acción |
+|---|---|---|
+| C3 | Rama `SUSPENDER` del gestor casi nunca se activa (Metro no satura). | Bajar capacidad del Metro o documentar que es ilustrativa. |
+| C5 | Conviven 4 modelos; un cambio se replica E0↔EB a mano. | Eliminar los legado si no se usan. |
 
-[en paralelo] Plantilla Overleaf + Metodología (ya redactable)
-[en paralelo] Entregables P2: CSV de parámetros BDI + tabla calibración AMT
-```
+> **Al agregar métricas:** sincronizar tres sitios — header `save` del `init`, fila de
+> `exportar_metricas` y `COLUMNAS_*` en `01_process_results.py`.

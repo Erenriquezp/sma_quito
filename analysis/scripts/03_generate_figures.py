@@ -12,6 +12,7 @@ Figuras generadas:
   Fig 4: Modal shift comparativo E0 vs EB (barras por franja horaria)
   Fig 5: Benchmark — comparación con London Congestion Charge
   Fig 6: Equidad modal y recaudación por hora simulada
+  Fig 7: Diferenciación tarifaria por tipo de vehículo (recaudación y pagos)
 
 Uso:
     python 03_generate_figures.py
@@ -88,6 +89,17 @@ def agregar_por_hora(df: pd.DataFrame) -> pd.DataFrame:
     }).reset_index()
 
 
+# Orden canónico de franjas (una corrida parcial puede no tener todas; ver fig4).
+ORDEN_FRANJAS = [
+    "06–07h",
+    "07–10h\n(pico matutino)",
+    "10–12h",
+    "12–17h",
+    "17–20h\n(pico vespertino)",
+    "20–22h",
+]
+
+
 def agregar_franjas(df: pd.DataFrame) -> pd.DataFrame:
     """Agrupa por franja horaria para gráficas de barras."""
     def franja(minuto):
@@ -118,7 +130,22 @@ def hora_ticks(ax):
     ax.set_xlabel("Hora del día")
 
 
+# Bandera global: combined.csv proviene (total o parcialmente) de datos sintéticos.
+# Se fija en main() y dispara la marca de agua en cada figura (C2).
+DATOS_SINTETICOS = False
+
+
+def aplicar_marca_agua(fig):
+    """Estampa 'DATOS SINTÉTICOS' en diagonal sobre la figura si la bandera está activa."""
+    if not DATOS_SINTETICOS:
+        return
+    fig.text(0.5, 0.5, "DATOS SINTÉTICOS", fontsize=44, color="red",
+             alpha=0.18, ha="center", va="center", rotation=30,
+             fontweight="bold", zorder=1000)
+
+
 def guardar(fig, nombre: str):
+    aplicar_marca_agua(fig)
     for ext in ["png", "pdf"]:
         ruta = FIGURES_DIR / f"{nombre}.{ext}"
         fig.savefig(ruta)
@@ -232,10 +259,14 @@ def fig3_decisiones(e0: pd.DataFrame, eb: pd.DataFrame):
 def fig4_modal_shift(e0: pd.DataFrame, eb: pd.DataFrame):
     fig, ax = plt.subplots(figsize=(10, 5))
 
-    e0_fr = agregar_franjas(e0)
-    eb_fr = agregar_franjas(eb)
+    # Alinear ambos escenarios al orden canónico; una corrida parcial puede no tener
+    # todas las franjas → se reindexan y las ausentes quedan en 0 (evita shape mismatch).
+    e0_fr = agregar_franjas(e0).set_index("franja")
+    eb_fr = agregar_franjas(eb).set_index("franja")
+    franjas = [f for f in ORDEN_FRANJAS if f in e0_fr.index or f in eb_fr.index]
+    e0_fr = e0_fr.reindex(franjas).fillna(0.0)
+    eb_fr = eb_fr.reindex(franjas).fillna(0.0)
 
-    franjas = e0_fr["franja"].tolist()
     x = np.arange(len(franjas))
     ancho = 0.35
 
@@ -373,12 +404,64 @@ def fig6_equidad_recaudacion(e0: pd.DataFrame, eb: pd.DataFrame):
     guardar(fig, "fig6_equidad_recaudacion")
 
 
+def fig7_tarifa_por_tipo(eb: pd.DataFrame):
+    """
+    Fig 7: diferenciación tarifaria por tipo de vehículo (solo EB).
+    Recaudación acumulada y nº de pagos por tipo, a partir de las columnas
+    cumulativas recaud_*/pagos_* (su máximo = total de la corrida).
+    """
+    tipos   = ["Auto", "SUV", "Carga"]
+    colores = [COLOR_E0, "#7B68EE", "#A0522D"]
+
+    def acum(col):
+        return float(eb[col].max()) if col in eb.columns and len(eb) else 0.0
+
+    recaud = [acum("recaud_auto"), acum("recaud_suv"), acum("recaud_carga")]
+    pagos  = [acum("pagos_auto"),  acum("pagos_suv"),  acum("pagos_carga")]
+
+    fig, axes = plt.subplots(1, 2, figsize=(11, 5))
+
+    axes[0].bar(tipos, recaud, color=colores, edgecolor="white")
+    axes[0].set_ylabel("Recaudación acumulada (USD)")
+    axes[0].set_title("Recaudación por tipo de vehículo")
+    axes[0].grid(True, axis="y", alpha=0.3)
+    for rect, v in zip(axes[0].patches, recaud):
+        axes[0].annotate(f"${v:,.0f}", xy=(rect.get_x() + rect.get_width()/2, v),
+                         xytext=(0, 3), textcoords="offset points",
+                         ha="center", va="bottom", fontsize=9)
+
+    axes[1].bar(tipos, pagos, color=colores, edgecolor="white")
+    axes[1].set_ylabel("Nº de pagos (eventos de decisión)")
+    axes[1].set_title("Pagos de peaje por tipo de vehículo")
+    axes[1].grid(True, axis="y", alpha=0.3)
+    for rect, v in zip(axes[1].patches, pagos):
+        axes[1].annotate(f"{v:,.0f}", xy=(rect.get_x() + rect.get_width()/2, v),
+                         xytext=(0, 3), textcoords="offset points",
+                         ha="center", va="bottom", fontsize=9)
+
+    nota = "Moto y Bus exonerados (tarifa $0)."
+    if sum(recaud) == 0:
+        nota = "Sin datos: re-correr EB en GAMA con el modelo actualizado. " + nota
+    fig.text(0.5, -0.02, nota, ha="center", fontsize=9, color="gray")
+
+    fig.suptitle("Fig. 7 — Diferenciación tarifaria por tipo de vehículo (EB)",
+                 fontsize=13, fontweight="bold", y=1.02)
+    guardar(fig, "fig7_tarifa_por_tipo")
+
+
 def main():
     print("=" * 60)
     print("  Generación de figuras para el paper — SMA Quito")
     print("=" * 60)
 
     df, e0, eb = cargar_datos()
+
+    # C2: detectar datos sintéticos para estampar la marca de agua en todas las figuras.
+    global DATOS_SINTETICOS
+    if "archivo_fuente" in df.columns:
+        DATOS_SINTETICOS = df["archivo_fuente"].astype(str).str.startswith("SYNTHETIC").any()
+    if DATOS_SINTETICOS:
+        print("  [AVISO] combined.csv contiene datos SINTÉTICOS → figuras con marca de agua.")
 
     e0_agg = agregar_por_hora(e0)
     eb_agg = agregar_por_hora(eb)
@@ -390,8 +473,9 @@ def main():
     fig4_modal_shift(e0, eb)
     fig5_benchmark(e0, eb)
     fig6_equidad_recaudacion(e0, eb)
+    fig7_tarifa_por_tipo(eb)
 
-    print(f"\n[DONE] 6 figuras guardadas en: {FIGURES_DIR}")
+    print(f"\n[DONE] 7 figuras guardadas en: {FIGURES_DIR}")
     print("       Formatos: .png (para visualización) y .pdf (para Overleaf)")
     print("\nPara incluir en Overleaf:")
     print("  \\includegraphics[width=\\linewidth]{figures/fig1_flujo_vehicular}")

@@ -1,0 +1,44 @@
+categoria,parametro,valor,clasificacion,fuente,nota
+Demografia NSE,PCT_NSE_ALTO,0.15,Aproximado,Perfil socioeconomico DMQ,Proporcion aproximada de la flota particular
+Demografia NSE,PCT_NSE_MEDIO,0.45,Aproximado,Perfil socioeconomico DMQ,Proporcion aproximada
+Demografia NSE,PCT_NSE_BAJO,0.40,Aproximado,Perfil socioeconomico DMQ,Proporcion aproximada
+Disposicion a pagar,WTP_NSE_ALTO (USD),3.00,Supuesto,Literatura / calibrado,Calibrado para reproducir comportamiento mixto (efecto Londres)
+Disposicion a pagar,WTP_NSE_MEDIO (USD),2.25,Supuesto,Literatura / calibrado,Con tarifa $2 produce decision mixta del NSE medio
+Disposicion a pagar,WTP_NSE_BAJO (USD),0.50,Supuesto,Literatura / calibrado,Maximiza ahorro; sensible a cualquier cobro
+Pesos de utilidad,w_tiempo/w_costo/w_comodidad NSE Alto,0.35/0.15/0.50,Supuesto,Literatura,Pondera mas comodidad y menos costo
+Pesos de utilidad,w_tiempo/w_costo/w_comodidad NSE Medio,0.35/0.35/0.30,Supuesto,Literatura,Equilibrado
+Pesos de utilidad,w_tiempo/w_costo/w_comodidad NSE Bajo,0.20/0.65/0.15,Supuesto,Literatura,Domina el costo
+Umbral congestion,umbral_congestion Alto/Medio/Bajo,0.40/0.55/0.70,Supuesto,Calibrado,Fraccion de vias congestionadas que dispara la deliberacion
+Umbral congestion,ajuste MOTO,-0.15,Supuesto,Calibrado,La moto delibera antes (mayor agilidad)
+Flota por tipo,NB_MOTOS,45 (15%),Aproximado,Parque automotor DMQ,Composicion estimada de la flota
+Flota por tipo,NB_AUTOS,165 (55%),Aproximado,Parque automotor DMQ,Composicion estimada
+Flota por tipo,NB_SUVS,45 (15%),Aproximado,Parque automotor DMQ,Composicion estimada
+Flota por tipo,NB_BUSES,30 (10%),Aproximado,Parque automotor DMQ,Exonerados del peaje
+Flota por tipo,NB_CARGAS,15 (5%),Aproximado,Parque automotor DMQ,Composicion estimada
+Capacidad de via,factor_capacidad_via Moto/Auto/SUV/Bus/Carga,0.3/1.0/1.5/3.0/2.5,Supuesto,Estimacion ingenieril (tipo PCU),Peso de ocupacion de via por tipo (referencia: auto=1.0)
+Cinematica,VEL_LIBRE_KMH,50.0,Supuesto,Diseño del modelo,Velocidad de flujo libre; la emergente = 50 x coef. de congestion
+Cinematica,Velocidad pico DMQ (referencia),14-18 km/h,Empirico,AMT / Google Maps Traffic,"Dato de calibracion; el modelo emite ~31-37 km/h (brecha documentada)"
+Tercera placa,PCT_RESTRICCION_PLACA,0.20,Empirico,Ordenanza Metropolitana DMQ / AMT,~20% de la flota en dias habiles
+Tercera placa,Ventana de restriccion,06:00-20:00,Empirico,Ordenanza Metropolitana DMQ,minuto 360-1200
+Peaje (tarifas pico),TARIFA_PICO_AUTO (USD),2.00,Propuesta,Municipio DMQ / benchmark Londres,Tarifa de referencia (auto particular)
+Peaje (tarifas pico),TARIFA_PICO_SUV (USD),3.00,Propuesta,Diseño (impacto vial),Diferenciada por mayor ocupacion
+Peaje (tarifas pico),TARIFA_PICO_CARGA (USD),3.00,Propuesta,Diseño (impacto vial),Mayor impacto vial
+Peaje (tarifas pico),TARIFA_PICO_MOTO / Bus,0.00 (exento),Diseño,SMA.md 7.2,Moto y Bus exonerados
+Peaje (tarifas pico),TARIFA_VALLE (USD),0.00,Diseño,Modelo London Congestion Charge,Sin cobro fuera de pico
+Peaje (franjas),Franjas pico,07:00-10:00 y 17:00-20:00,Benchmark,London Congestion Charge,minuto 420-600 y 1020-1200
+Gestor AMT,Cadencia de deliberacion,30 ciclos (~5 min),Supuesto,Diseño,Frecuencia de ajuste BDI
+Gestor AMT,UMBRAL_VEL_CRITICA (km/h),33.0,Calibrado,Regimen del modelo (frente B),Velocidad < critica tiende a SUBIR
+Gestor AMT,UMBRAL_VEL_OPTIMA (km/h),40.0,Calibrado,Regimen del modelo (frente B),Sobre la banda emergente; evita colapso de la tarifa
+Gestor AMT,UMBRAL_DENSIDAD_ALTA (v/c),0.25,Calibrado,Regimen del modelo (frente B),Saturacion volumen/capacidad alta -> SUBIR
+Gestor AMT,UMBRAL_DENSIDAD_BAJA (v/c),0.20,Calibrado,Regimen del modelo (frente B),Saturacion baja -> BAJAR
+Gestor AMT,UMBRAL_METRO_SAT,0.85,Supuesto,Diseño,Saturacion del Metro que suspende el cobro
+Gestor AMT,TARIFA_MIN_PICO / MAX / PASO_AJUSTE,0.50 / 3.00 / 0.25,Supuesto,Diseño,Rango y paso del ajuste dinamico
+Metro,COSTO_METRO (USD),0.45,Empirico,Tarifa Metro de Quito (EPMMQ),Tarifa real del Metro
+Metro,Estaciones de la zona,"2 (Inaquito, La Carolina)",Empirico,Metro de Quito,Estaciones adyacentes al poligono
+Metro,capacidad_hora por estacion,8000,Supuesto,Estimacion,Capacidad de absorcion modal
+Metro,metro_accesible,0.60,Supuesto,Estimacion de cobertura,Fraccion de agentes con acceso al Metro
+Metro,Tren: intervalo y aforo,"cada 30 ciclos, 300 pasajeros",Supuesto,Diseño operativo,Salida de tren y abordaje
+Metro,Modal shift base desde auto,15% (~10000 autos/dia),Empirico,Encuesta EPMMQ dic2023-feb2024,Contexto de calibracion (no parametro directo)
+Reloj de simulacion,step,10 s,Diseño,Diseño del modelo,Paso de simulacion
+Reloj de simulacion,Horizonte,06:00-22:00,Diseño,Diseño del modelo,minuto 360-1320 (do pause al final)
+Reloj de simulacion,INTERVALO_LOG,90 ciclos (~15 min),Diseño,Diseño del modelo,Frecuencia de exportacion de metricas

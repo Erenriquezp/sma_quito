@@ -233,14 +233,46 @@ def generar_tabla_benchmark(m_e0: dict, m_eb: dict) -> pd.DataFrame:
             "¿Cumple?": "SÍ ✓" if m_eb["pct_metro_pico"] > 5.0 else "NO",
         },
         {
-            "Indicador": "Tarifa inicial (hora pico)",
+            "Indicador": "Tarifa pico (hora pico)",
             "Londres 2003": f"£5 ≈ ${BENCHMARK_LONDRES['tarifa_inicial_usd']} USD (2003)",
-            "Meta Quito": "$2.00 USD (propuesto)",
-            "Modelo (EB vs E0)": "$2.00 USD",
+            "Meta Quito": "$2.00–$3.00 USD (propuesto)",
+            "Modelo (EB vs E0)": "Auto/SUV $2-3 · Carga $3 · Moto/Bus exentos",
             "¿Cumple?": "—",
         },
     ]
 
+    return pd.DataFrame(filas)
+
+
+def generar_tabla_tarifa_tipo(eb: pd.DataFrame) -> pd.DataFrame:
+    """
+    Desglose de la diferenciación tarifaria por tipo de vehículo (solo EB).
+    Lee las columnas acumuladas recaud_* / pagos_* (su máximo = total de la corrida)
+    y reporta recaudación, nº de pagos y tarifa media efectiva por tipo. Hace
+    observable que el peaje discrimina por tipo (Auto/SUV/Carga; Moto/Bus exonerados).
+    """
+    tipos = [
+        ("Auto",  "recaud_auto",  "pagos_auto"),
+        ("SUV",   "recaud_suv",   "pagos_suv"),
+        ("Carga", "recaud_carga", "pagos_carga"),
+    ]
+    filas = []
+    for nombre, c_recaud, c_pagos in tipos:
+        recaud = float(eb[c_recaud].max()) if c_recaud in eb.columns and len(eb) else 0.0
+        pagos  = int(eb[c_pagos].max())    if c_pagos in eb.columns and len(eb) else 0
+        tarifa_media = round(recaud / pagos, 2) if pagos > 0 else 0.0
+        filas.append({
+            "Tipo de vehículo":          nombre,
+            "Recaudación acum. (USD)":   round(recaud, 2),
+            "Nº de pagos":               pagos,
+            "Tarifa media efectiva (USD)": tarifa_media,
+        })
+    filas.append({
+        "Tipo de vehículo":          "Moto / Bus",
+        "Recaudación acum. (USD)":   0.0,
+        "Nº de pagos":               0,
+        "Tarifa media efectiva (USD)": 0.0,
+    })
     return pd.DataFrame(filas)
 
 
@@ -292,6 +324,16 @@ def main():
     tabla_bench.to_csv(ruta_bench, index=False)
     print(f"\n[OK] Tabla benchmark Londres → {ruta_bench}")
     print(tabla_bench.to_string(index=False))
+
+    # ── Diferenciación tarifaria por tipo de vehículo (EB) ─────────────────
+    tabla_tipo = generar_tabla_tarifa_tipo(eb)
+    ruta_tipo = RESULTS_DIR / "tabla_tarifa_tipo.csv"
+    tabla_tipo.to_csv(ruta_tipo, index=False)
+    print(f"\n[OK] Tabla recaudación por tipo de vehículo → {ruta_tipo}")
+    print(tabla_tipo.to_string(index=False))
+    if tabla_tipo["Recaudación acum. (USD)"].sum() == 0:
+        print("  [AVISO] Recaudación por tipo = 0 en todas las filas. Re-correr EB en GAMA")
+        print("          con el modelo actualizado para poblar recaud_*/pagos_*.")
 
     # ── Test de significancia estadística ─────────────────────────────────
     print("\n── Significancia estadística (t-test) ──")

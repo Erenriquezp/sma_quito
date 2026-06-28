@@ -105,15 +105,31 @@ global {
 	int   dia_semana            <- 1;
 
 	// ── Tarifas de peaje por tipo de vehículo (hora pico) ──────────────────────
-	// MOTO y BUS están exonerados por diseño (SMA.md §7.2): no tienen parámetro de tarifa.
-	float TARIFA_PICO_AUTO  <- 2.00;   // base — slider principal y referencia del gestor
-	float TARIFA_PICO_SUV   <- 2.00;
+	// Esquema diferenciado: cada tipo tiene su tarifa base INDEPENDIENTE (no un ratio
+	// sobre el AUTO). MOTO y BUS están exonerados por diseño (SMA.md §7.2): tarifa 0.
+	// El GestorAMT escala todas las tarifas con un multiplicador global (factor_gestor),
+	// conservando las proporciones entre tipos.
+	float TARIFA_PICO_AUTO  <- 2.00;   // auto particular — referencia publicada en los gates
+	float TARIFA_PICO_SUV   <- 3.00;   // mayor ocupación de vía que el auto
 	float TARIFA_PICO_CARGA <- 3.00;   // mayor impacto vial
+	float TARIFA_PICO_MOTO  <- 0.00;   // exonerada (subir > 0 para tarifa reducida)
 	float TARIFA_VALLE      <- 0.00;
 	bool  PEAJE_ACTIVO      <- true;
-	// GESTOR_ACTIVO: el GestorAMT tiene control exclusivo de tarifa_vigente en pico;
+	// GESTOR_ACTIVO: el GestorAMT controla factor_gestor y la tarifa de referencia en pico;
 	// el reflex cobrar del PuntoControl no la sobreescribe (ver PuntoControl).
 	bool  GESTOR_ACTIVO     <- true;
+	// Multiplicador dinámico del GestorAMT sobre las tarifas base (1.0 = tarifas base).
+	float factor_gestor     <- 1.0;
+
+	// ── Umbrales de deliberación del GestorAMT (frente B; ajustables en el experimento) ──
+	// Corrigen el régimen: la velocidad emergente (~31–37 km/h) nunca bajaba de los
+	// 14 km/h originales, dejando al gestor inerte. Ahora son tunables por slider y la
+	// densidad mide saturación volumen/capacidad (alta = congestión), no fluidez.
+	float UMBRAL_VEL_CRITICA   <- 33.0;   // km/h; velocidad < crítica → tendencia a SUBIR
+	float UMBRAL_VEL_OPTIMA    <- 40.0;   // km/h; velocidad ≥ óptima → habilita BAJAR (sobre la
+	                                      // banda emergente ~31–37: evita que la tarifa colapse al piso)
+	float UMBRAL_DENSIDAD_ALTA <- 0.25;   // saturación v/c de la zona; alto → SUBIR (encarece en carga)
+	float UMBRAL_DENSIDAD_BAJA <- 0.20;   // saturación v/c de la zona; bajo → BAJAR
 
 	float COSTO_METRO   <- 0.45;
 	float VEL_LIBRE_KMH <- 50.0;   // flujo libre; la velocidad media emergente = VEL_LIBRE × coef. de congestión
@@ -141,6 +157,11 @@ global {
 	float velocidad_media  <- 0.0;
 	int   modal_shift_acum <- 0;
 	float recaudacion_acum <- 0.0;
+
+	// Recaudación y nº de pagos acumulados por tipo de vehículo (hacen observable la
+	// diferenciación tarifaria). MOTO y BUS exonerados no acumulan.
+	float recaud_auto <- 0.0; float recaud_suv <- 0.0; float recaud_carga <- 0.0;
+	int   pagos_auto  <- 0;   int   pagos_suv  <- 0;   int   pagos_carga  <- 0;
 
 	// Decisiones por NSE (intervalo actual) — alimentan el display de equidad.
 	int count_directo_alto <- 0; int count_directo_medio <- 0; int count_directo_bajo <- 0;
@@ -195,7 +216,9 @@ global {
 		      "recaudacion_acum_usd","nb_restringidos_placa",
 		      "directo_nse_alto","directo_nse_medio","directo_nse_bajo",
 		      "metro_nse_alto","metro_nse_medio","metro_nse_bajo",
-		      "rerouta_nse_alto","rerouta_nse_medio","rerouta_nse_bajo"]
+		      "rerouta_nse_alto","rerouta_nse_medio","rerouta_nse_bajo",
+		      "recaud_auto","recaud_suv","recaud_carga",
+		      "pagos_auto","pagos_suv","pagos_carga"]
 		to: archivo_csv format: "csv" rewrite: true;
 		csv_header_escrito <- true;
 
@@ -264,7 +287,9 @@ global {
 		      modal_shift_acum, round(recaudacion_acum * 100) / 100.0, s_restringidos,
 		      s_directo_alto, s_directo_medio, s_directo_bajo,
 		      s_metro_alto,   s_metro_medio,   s_metro_bajo,
-		      s_rerouta_alto, s_rerouta_medio, s_rerouta_bajo]
+		      s_rerouta_alto, s_rerouta_medio, s_rerouta_bajo,
+		      round(recaud_auto * 100) / 100.0, round(recaud_suv * 100) / 100.0, round(recaud_carga * 100) / 100.0,
+		      pagos_auto, pagos_suv, pagos_carga]
 		to: archivo format: "csv" rewrite: false;
 
 		// Reinicio de los contadores NSE para el siguiente intervalo.
@@ -355,9 +380,9 @@ species EstacionMetro {
 }
 
 // ── GestorAMT — agente BDI deliberativo (SMA.md §7.2) ────────────────────────
-// Creencias: densidad del polígono, velocidad media, tendencia, saturación Metro.
+// Creencias: saturación v/c del polígono, velocidad media, tendencia, saturación Metro.
 // Intenciones: MANTENER | SUBIR | BAJAR | SUSPENDER, deliberadas cada 30 ciclos.
-// Escribe tarifa_vigente en todos los PuntoControl activos (patrón FIPA).
+// Escribe la tarifa de referencia y factor_gestor a los PuntoControl (patrón FIPA).
 species GestorAMT {
 
 	float  densidad_poligono  <- 0.0;
@@ -368,10 +393,7 @@ species GestorAMT {
 	string intencion_actual   <- "MANTENER";
 	float  tarifa_gestionada   <- 0.0;
 
-	float UMBRAL_DENSIDAD_ALTA <- 0.70;
-	float UMBRAL_DENSIDAD_BAJA <- 0.40;
-	float UMBRAL_VEL_CRITICA   <- 14.0;
-	float UMBRAL_VEL_OPTIMA    <- 20.0;
+	// Umbrales de velocidad y densidad → globales tunables (ver bloque global, frente B).
 	float UMBRAL_METRO_SAT     <- 0.85;
 	float TARIFA_MIN_PICO      <- 0.50;
 	float TARIFA_MAX           <- 3.00;
@@ -379,27 +401,38 @@ species GestorAMT {
 
 	reflex actualizar_creencias {
 		densidad_anterior  <- densidad_poligono;
-		densidad_poligono  <- length(ConductorBDI where (each.t_sin_avanzar = 0)) / float(max([1, length(ConductorBDI)]));
+		// Densidad = saturación volumen/capacidad de las vías de la zona de cobro
+		// (alta = congestión). Antes contaba agentes en movimiento → medía fluidez,
+		// no congestión, lo que dejaba al gestor sin señal de demanda válida.
+		list<road> vias_zona <- (zona_peaje = nil)
+		    ? roads_conectadas
+		    : (roads_conectadas where (each.shape intersects zona_peaje));
+		float ocup  <- empty(vias_zona) ? 0.0 : sum(vias_zona collect each.nb_people);
+		float capac <- empty(vias_zona) ? 0.0 : sum(vias_zona collect each.capacity);
+		densidad_poligono  <- (capac > 0.0) ? min(1.0, ocup / capac) : 0.0;
 		velocidad_poligono <- velocidad_media;
 		float delta <- densidad_poligono - densidad_anterior;
-		tendencia <- (delta > 0.03) ? 1 : ((delta < -0.03) ? -1 : 0);
+		tendencia <- (delta > 0.02) ? 1 : ((delta < -0.02) ? -1 : 0);
 		int espera_total    <- sum(EstacionMetro collect each.pasajeros_espera);
 		int capacidad_total <- sum(EstacionMetro collect each.capacidad_hora);
 		saturacion_metro    <- espera_total / float(max(1, capacidad_total));
 	}
 
+	// Deliberación BDI: la densidad (carga de la zona) y la velocidad gobiernan el ajuste.
+	// Dos vías a SUBIR (zona cargada O velocidad baja) y dos a BAJAR (despejado y fluido O
+	// descongestionando). El Metro saturado suspende el cobro para no expulsar más demanda.
 	reflex deliberar when: (cycle mod 30 = 0) and PEAJE_ACTIVO and GESTOR_ACTIVO and (dia_semana >= 1 and dia_semana <= 5) {
 		string nueva_intencion <- "MANTENER";
 		if (saturacion_metro >= UMBRAL_METRO_SAT and tendencia <= 0) {
 			nueva_intencion <- "SUSPENDER";
-		} else if (densidad_poligono >= UMBRAL_DENSIDAD_ALTA and velocidad_poligono < UMBRAL_VEL_CRITICA and saturacion_metro < UMBRAL_METRO_SAT) {
-			nueva_intencion <- "SUBIR";
-		} else if (tendencia = 1 and densidad_poligono > 0.55 and velocidad_poligono < UMBRAL_VEL_OPTIMA and saturacion_metro < UMBRAL_METRO_SAT) {
-			nueva_intencion <- "SUBIR";
+		} else if (densidad_poligono >= UMBRAL_DENSIDAD_ALTA and saturacion_metro < UMBRAL_METRO_SAT) {
+			nueva_intencion <- "SUBIR";                       // zona cargada → encarecer
+		} else if (velocidad_poligono < UMBRAL_VEL_CRITICA and tendencia >= 0 and saturacion_metro < UMBRAL_METRO_SAT) {
+			nueva_intencion <- "SUBIR";                       // velocidad baja y sin mejora
 		} else if (densidad_poligono <= UMBRAL_DENSIDAD_BAJA and velocidad_poligono >= UMBRAL_VEL_OPTIMA) {
-			nueva_intencion <- "BAJAR";
+			nueva_intencion <- "BAJAR";                       // despejado y fluido → abaratar
 		} else if (tendencia = -1 and velocidad_poligono >= UMBRAL_VEL_OPTIMA) {
-			nueva_intencion <- "BAJAR";
+			nueva_intencion <- "BAJAR";                       // descongestionando
 		}
 		intencion_actual <- nueva_intencion;
 		do ejecutar_intencion();
@@ -420,6 +453,10 @@ species GestorAMT {
 		}
 		tarifa_gestionada <- nueva_tarifa;
 
+		// Multiplicador global = tarifa de referencia gestionada / tarifa base del auto.
+		// Escala TODAS las tarifas por tipo conservando sus proporciones; el gate publica
+		// la tarifa de referencia (auto) para el display y el CSV.
+		factor_gestor <- (es_hora_pico and TARIFA_PICO_AUTO > 0.0) ? (nueva_tarifa / TARIFA_PICO_AUTO) : 1.0;
 		ask PuntoControl where each.modo_peaje_activo { tarifa_vigente <- nueva_tarifa; }
 
 		if intencion_actual != "MANTENER" {
@@ -512,18 +549,20 @@ species ConductorBDI skills: [moving] {
 	}
 
 	reflex percibir {
-		ask PuntoControl at_distance 300 { myself.tarifa_percibida <- self.tarifa_vigente; }
+		// Detecta si hay un peaje cobrando en el entorno: tarifa_vigente > 0 solo en pico
+		// con cobro. Sirve de interruptor on/off, no como el monto que paga el agente.
+		list<PuntoControl> peajes_cerca <- PuntoControl at_distance 300;
+		float t_gate <- empty(peajes_cerca) ? 0.0 : max(peajes_cerca collect each.tarifa_vigente);
+		tarifa_percibida <- t_gate;
 
-		// Tarifa efectiva por tipo: exonerados 0; SUV y CARGA como ratio sobre el AUTO.
-		if (exonerado_peaje) {
-			tarifa_efectiva <- 0.0;
-		} else if (tipo_vehiculo = "SUV") {
-			tarifa_efectiva <- tarifa_percibida * ((TARIFA_PICO_AUTO > 0.0) ? (TARIFA_PICO_SUV / TARIFA_PICO_AUTO) : 1.0);
-		} else if (tipo_vehiculo = "CARGA") {
-			tarifa_efectiva <- tarifa_percibida * ((TARIFA_PICO_AUTO > 0.0) ? (TARIFA_PICO_CARGA / TARIFA_PICO_AUTO) : 1.5);
-		} else {
-			tarifa_efectiva <- tarifa_percibida;   // AUTO paga la tarifa completa
-		}
+		// Tarifa efectiva = tarifa base del propio tipo × multiplicador del gestor.
+		// Independiente entre tipos (sin ratio sobre el AUTO); exonerados pagan 0.
+		float base_tipo <- 0.0;
+		if      (tipo_vehiculo = "AUTO")  { base_tipo <- TARIFA_PICO_AUTO; }
+		else if (tipo_vehiculo = "SUV")   { base_tipo <- TARIFA_PICO_SUV; }
+		else if (tipo_vehiculo = "CARGA") { base_tipo <- TARIFA_PICO_CARGA; }
+		else if (tipo_vehiculo = "MOTO")  { base_tipo <- TARIFA_PICO_MOTO; }
+		tarifa_efectiva <- (exonerado_peaje or t_gate <= 0.0) ? 0.0 : base_tipo * factor_gestor;
 
 		list<road> vias_cercanas <- road at_distance 200;
 		nivel_congestion <- empty(vias_cercanas)
@@ -576,6 +615,12 @@ species ConductorBDI skills: [moving] {
 		if (ud >= ur and ud >= um) {
 			intencion        <- "RUTA_DIRECTA";
 			recaudacion_acum <- recaudacion_acum + tarifa_efectiva;
+			// Desglose por tipo de vehículo (solo si efectivamente paga).
+			if (tarifa_efectiva > 0.0) {
+				if      (tipo_vehiculo = "AUTO")  { recaud_auto  <- recaud_auto  + tarifa_efectiva; pagos_auto  <- pagos_auto  + 1; }
+				else if (tipo_vehiculo = "SUV")   { recaud_suv   <- recaud_suv   + tarifa_efectiva; pagos_suv   <- pagos_suv   + 1; }
+				else if (tipo_vehiculo = "CARGA") { recaud_carga <- recaud_carga + tarifa_efectiva; pagos_carga <- pagos_carga + 1; }
+			}
 			if      (nse = "ALTO")  { count_directo_alto  <- count_directo_alto  + 1; }
 			else if (nse = "MEDIO") { count_directo_medio <- count_directo_medio + 1; }
 			else                    { count_directo_bajo  <- count_directo_bajo  + 1; }
@@ -713,6 +758,10 @@ experiment "EB — Peaje Franja Horaria" type: gui autorun: false {
 	parameter "Tarifa CARGA pico (USD)"    var: TARIFA_PICO_CARGA min: 0.0 max: 5.0 step: 0.50 category: "Peaje";
 	parameter "Peaje activo"               var: PEAJE_ACTIVO                                   category: "Peaje";
 	parameter "Gestor AMT activo"          var: GESTOR_ACTIVO                                  category: "Peaje";
+	parameter "Gestor: vel. crítica (km/h)" var: UMBRAL_VEL_CRITICA   min: 20.0 max: 45.0 step: 1.0  category: "Peaje";
+	parameter "Gestor: vel. óptima (km/h)"  var: UMBRAL_VEL_OPTIMA    min: 20.0 max: 50.0 step: 1.0  category: "Peaje";
+	parameter "Gestor: densidad alta (v/c)" var: UMBRAL_DENSIDAD_ALTA min: 0.1  max: 1.0  step: 0.05 category: "Peaje";
+	parameter "Gestor: densidad baja (v/c)" var: UMBRAL_DENSIDAD_BAJA min: 0.0  max: 0.6  step: 0.05 category: "Peaje";
 	parameter "Seleccionar Entorno Vial:"  var: nombre_mapa                                    category: "Mapa";
 	parameter "Tamaño vehículos"           var: ESCALA_VEHICULO   min: 2.0 max: 40.0 step: 2.0 category: "Vista";
 
@@ -762,8 +811,9 @@ experiment "EB — Peaje Franja Horaria" type: gui autorun: false {
 				draw ("$" + (round(recaudacion_acum * 100) / 100.0)) at: {140 #px, 153 #px} anchor: #top_left color: #white font: font("Arial", 13, #bold);
 
 				// Peaje configurado por tipo (refleja los sliders al instante; valores de pico).
+				float f_now <- cobrando ? factor_gestor : 1.0;
 				draw "PEAJE POR TIPO (pico)" at: {14 #px, 178 #px} anchor: #top_left color: rgb(130, 135, 145) font: font("Arial", 8, #bold);
-				draw ("Auto $" + TARIFA_PICO_AUTO + "  ·  SUV $" + TARIFA_PICO_SUV + "  ·  Carga $" + TARIFA_PICO_CARGA)
+				draw ("Auto $" + (round(TARIFA_PICO_AUTO * f_now * 100) / 100.0) + "  ·  SUV $" + (round(TARIFA_PICO_SUV * f_now * 100) / 100.0) + "  ·  Carga $" + (round(TARIFA_PICO_CARGA * f_now * 100) / 100.0))
 				     at: {14 #px, 191 #px} anchor: #top_left color: rgb(205, 208, 214) font: font("Arial", 9, #plain);
 				draw "Moto y Bus: exentos" at: {14 #px, 205 #px} anchor: #top_left color: rgb(150, 175, 150) font: font("Arial", 9, #plain);
 				draw rectangle(222 #px, 1 #px) at: {125 #px, 224 #px} color: rgb(55, 60, 70);
@@ -849,6 +899,16 @@ experiment "EB — Peaje Franja Horaria" type: gui autorun: false {
 				data "Velocidad (km/h)"   value: velocidad_media color: #limegreen;
 				data "Tarifa × 10 (USD)"  value: (empty(GestorAMT) ? 0.0 : first(GestorAMT).tarifa_gestionada * 10.0) color: #red;
 				data "Sat. Metro % × 100" value: (empty(GestorAMT) ? 0.0 : first(GestorAMT).saturacion_metro * 100.0) color: #royalblue;
+			}
+		}
+
+		// Observabilidad de la diferenciación tarifaria: recaudación acumulada por tipo.
+		display "Recaudación por tipo — EB" {
+			chart "Recaudación acumulada por tipo de vehículo (USD)" type: histogram
+			      background: rgb(25, 25, 25) color: #white
+			      x_serie_labels: ["Auto", "SUV", "Carga"]
+			      tick_font: font("Arial", 11, #bold) {
+				data "USD" value: [recaud_auto, recaud_suv, recaud_carga] color: #dodgerblue;
 			}
 		}
 	}

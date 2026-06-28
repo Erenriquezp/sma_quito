@@ -164,16 +164,16 @@ crítico y debate de política pública activo.
 | Puntos de control | 5 accesos principales semaforizados (C1–C5) |
 | Estaciones Metro | Iñaquito (norte) · La Carolina (sur) |
 
-### 7.2 Los seis tipos de agente
+### 7.2 Los agentes del sistema
 
 | Agente | Arquitectura | Instancias | Rol |
 |---|---|---|---|
-| **Conductor / Vehículo** | BDI + Utilidad | 300–500 | Agente central. Decide pagar, reroutear o cambiar al Metro según NSE y utilidad. |
-| **Punto de control (peaje)** | Reactivo → BDI | 5 | Cobra en los accesos. Comunica la tarifa vigente al gestor y a los conductores. |
-| **Estación de Metro** | Reactivo / Pasivo | 2 | Atractor de modal shift, con capacidad de absorción limitada. |
-| **Gestor AMT / Municipio** | BDI deliberativo | 1 | Visión global; ajusta tarifas en tiempo de simulación (activo en EB). |
-| **Red vial (entorno)** | Pasivo | 1 (continua) | Red interior vs. rutas de desvío externas. Importada de QGIS/OSM. |
-| **Transporte público (bus/Trole)** | Reactivo | Variable | Exonerado del peaje. Compite con el Metro por captación modal. |
+| **Conductor / Vehículo** (`ConductorBDI`) | BDI + Utilidad | 300 inicial + inyección en pico (~840) | Agente central. Decide pagar, reroutear o cambiar al Metro según **NSE y tipo de vehículo** (ver §7.5) y utilidad. |
+| **Punto de control (peaje)** (`PuntoControl`) | Reactivo → BDI | 5 (C1–C5) | Cobra en los accesos. Publica la tarifa de referencia; el gestor le escribe la tarifa vigente. |
+| **Estación de Metro** (`EstacionMetro`) | Reactivo / Pasivo | 2 (Iñaquito, La Carolina) | Atractor de modal shift; capacidad ~8 000/h por estación. |
+| **Gestor AMT / Municipio** (`GestorAMT`) | BDI deliberativo | 1 | Visión global. Delibera cada 30 ciclos sobre creencias (densidad v/c de la zona, velocidad, tendencia, saturación Metro) → intención MANTENER/SUBIR/BAJAR/SUSPENDER, y escala **todas** las tarifas con `factor_gestor` (activo en EB). |
+| **Red vial (entorno)** (`road`) | Pasivo | 1 (continua) | Red interior vs. rutas de desvío externas. `speed_coeff` decae con la ocupación ponderada. Importada de QGIS/OSM. |
+| **Transporte público (bus)** | Reactivo | 30 (~10 %) | Implementado como `tipo_vehiculo = "BUS"` dentro de `ConductorBDI` (no especie aparte). Exonerado del peaje; siempre RUTA_DIRECTA y NSE Bajo. |
 
 ### 7.3 Función de utilidad del conductor
 
@@ -188,6 +188,18 @@ más la comodidad y menos el costo; uno de nivel bajo maximiza el ahorro aunque 
 tiempo. **Esta heterogeneidad es el mecanismo que permite el análisis de equidad**: quién paga,
 quién rerutea y quién se ve forzado al Metro.
 
+Valores calibrados en los modelos finales (`*2`):
+
+| NSE | Proporción | `wtp` (USD) | w₁ tiempo | w₂ costo | w₃ comodidad | Umbral congestión |
+|---|---:|---:|---:|---:|---:|---:|
+| Alto | 15 % | 3.00 | 0.35 | 0.15 | 0.50 | 0.40 |
+| Medio | 45 % | 2.25 | 0.35 | 0.35 | 0.30 | 0.55 |
+| Bajo | 40 % | 0.50 | 0.20 | 0.65 | 0.15 | 0.70 |
+
+La utilidad de RUTA_DIRECTA se penaliza (−0.5) cuando la **tarifa efectiva supera el `wtp`**, lo
+que fuerza al agente a una alternativa (rerouteo o Metro). El conductor delibera solo cuando hay
+peaje percibido, congestión sobre su umbral, o periódicamente en hora pico.
+
 ### 7.4 Integración de la tercera placa
 
 Precondición evaluada al inicio de cada ciclo:
@@ -197,6 +209,32 @@ Precondición evaluada al inicio de cada ciclo:
 - **Sin restricción** — evalúa normalmente su función de utilidad ante el cobro.
 - **Exonerado estructural** (emergencias, transporte público) — acceso libre, sin cobro, en todos
   los escenarios.
+
+### 7.5 Flota heterogénea: tipos de vehículo y tarifas diferenciadas
+
+El conductor tiene **dos identidades superpuestas**: su NSE (§7.3) y su **tipo de vehículo**, que
+fija velocidad, ocupación de vía (`factor_capacidad_via`) y tratamiento tarifario. La flota inicial
+de 300 agentes se reparte así:
+
+| Tipo | Flota | Factor de vía | Tarifa pico (USD) | Notas |
+|---|---:|---:|---:|---|
+| Moto | 45 (15 %) | 0.3 | **Exonerado** | Mayor agilidad; umbral de congestión reducido. |
+| Auto | 165 (55 %) | 1.0 | 2.00 | Referencia publicada en los gates. |
+| SUV | 45 (15 %) | 1.5 | 3.00 | `wtp` escalado ×1.3. |
+| Bus | 30 (10 %) | 3.0 | **Exonerado** | Ruta fija; NSE Bajo forzado. |
+| Carga | 15 (5 %) | 2.5 | 3.00 | Mayor impacto vial. |
+
+**Tarifa efectiva.** Cada agente paga la tarifa base de su propio tipo (no un ratio sobre el auto);
+los exonerados pagan 0. La tarifa la calcula como `tarifa_base_tipo × factor_gestor`.
+
+**Señal tarifaria dinámica (EB).** Las tarifas base solo se cobran en franja pico (07–10 h, 17–20 h)
+y son escaladas por el **`GestorAMT`** mediante un multiplicador global `factor_gestor`, que mueve
+todas las tarifas conservando sus proporciones dentro del rango `[$0.50, $3.00]` (pasos de $0.25).
+Esto hace que el peaje sea **diferenciado por tipo** y **dinámico en el tiempo** a la vez.
+
+> **Caveat de implementación.** En los modelos configurables `*2` los 5 puntos de control se colocan
+> de forma interactiva (doble clic) y la zona de cobro es su envolvente convexa; no se persisten, por
+> lo que la corrida no es aún reproducible en batch/autorun (ver `ESTADO_PROYECTO.md`, frente C).
 
 ---
 
@@ -208,7 +246,7 @@ futuro en el paper.
 | Escenario | Descripción | Parámetros | Propósito |
 |---|---|---|---|
 | **E0** ✓ | Baseline sin peaje — estado actual | Pico y placa activo, sin cobro, Metro libre | Calibración contra AMT; línea base obligatoria. |
-| **EB** ✓ | Peaje por franja horaria — modelo Londres | $0 fuera de pico; **$1.50–$2.00 en pico** (07–10 h y 17–20 h); con tercera placa | Benchmark directo con el LCC; evalúa reducción y equidad. |
+| **EB** ✓ | Peaje por franja horaria — modelo Londres | $0 fuera de pico; en pico (07–10 h, 17–20 h) **tarifas diferenciadas por tipo** (Auto $2 · SUV/Carga $3 · Moto/Bus exentos), ajustadas dinámicamente por el `GestorAMT` en `[$0.50, $3.00]`; con tercera placa | Benchmark directo con el LCC; evalúa reducción y equidad. |
 | A (futuro) | Peaje fijo 24 h ($0.50–$1.00) | Tarifa plana sin distinción horaria | Extensión del paper. |
 | C (futuro) | Tarifa dinámica BDI en tiempo real | Ajuste cada 5 min por el gestor AMT | Estado del arte; investigación futura. |
 
@@ -223,7 +261,16 @@ futuro en el paper.
 | Desplazamiento periférico | Δ Q_ext | veh/h | También redujo el tráfico en vías no cobradas |
 | Velocidad media en polígono | km/h | km/h | +20 % a los 6 meses |
 | Equidad socioeconómica | Δ Gini modal | índice 0–1 | Beneficios progresivos (J. Urban Econ. 2024) |
-| Recaudación estimada | $/hora simulada | USD | £5/día inicial (≈ $6 USD 2003); Quito propone $1.50–$2.00 |
+| Recaudación estimada | $/hora simulada | USD | £5/día inicial (≈ $6 USD 2003); Quito propone $2–$3 diferenciado |
+| Recaudación y pagos por tipo | USD y nº de pagos | por tipo | Hace observable la diferenciación (Auto/SUV/Carga; Moto/Bus exentos) |
+
+> **Columnas reales exportadas (modelos `*2`).** El CSV de EB incluye, además de las métricas
+> agregadas: la tarifa de referencia (`tarifa_vigente_usd`), las decisiones desagregadas por NSE
+> (`directo_*`, `metro_*`, `rerouta_*`) y la diferenciación tarifaria por tipo
+> (`recaud_auto/suv/carga`, `pagos_auto/suv/carga`). El pipeline Python deriva de las decisiones
+> NSE los proxies de flujo (`flujo_poligono`, `flujo_externo`) y el `Δ Gini modal`. La lista de
+> columnas debe mantenerse en sincronía en tres sitios (header `save` del `init`, fila de
+> `exportar_metricas` y `COLUMNAS_*` en `01_process_results.py`).
 
 ---
 

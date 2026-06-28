@@ -26,6 +26,7 @@ Autores: Equipo SMA Quito — UCE Sistemas Colaborativos 2026
 """
 
 import sys
+import argparse
 import pandas as pd
 import numpy as np
 from pathlib import Path
@@ -77,6 +78,10 @@ COLUMNAS_NSE = [
     "metro_nse_alto",    "metro_nse_medio",     "metro_nse_bajo",
     "rerouta_nse_alto",  "rerouta_nse_medio",   "rerouta_nse_bajo",
 ]
+# Diferenciación tarifaria por tipo de vehículo (solo EB; ausentes en E0 → 0).
+# Recaudación acumulada (USD) y nº de pagos por tipo. MOTO y BUS exonerados no aparecen.
+COLUMNAS_TIPO_FLOAT = ["recaud_auto", "recaud_suv", "recaud_carga"]
+COLUMNAS_TIPO_INT   = ["pagos_auto", "pagos_suv", "pagos_carga"]
 
 
 def calcular_gini(values: np.ndarray) -> float:
@@ -152,6 +157,14 @@ def rellenar_columnas_faltantes(df: pd.DataFrame, escenario: str) -> pd.DataFram
 
     # Columnas NSE desagregadas
     for col in COLUMNAS_NSE:
+        if col not in df.columns:
+            df[col] = 0
+
+    # Diferenciación tarifaria por tipo (E0 no cobra → 0; CSV antiguos sin estas columnas → 0)
+    for col in COLUMNAS_TIPO_FLOAT:
+        if col not in df.columns:
+            df[col] = 0.0
+    for col in COLUMNAS_TIPO_INT:
         if col not in df.columns:
             df[col] = 0
 
@@ -278,11 +291,11 @@ def limpiar_dataframe(df: pd.DataFrame, escenario: str) -> pd.DataFrame:
     cols_float = [
         "velocidad_media_kmh", "pct_ruta_directa", "pct_reroutean",
         "pct_metro", "recaudacion_acum_usd",
-    ]
+    ] + COLUMNAS_TIPO_FLOAT
     cols_int = [
         "minuto", "nb_conductores", "modal_shift_acum",
         "nb_restringidos_placa",
-    ] + COLUMNAS_NSE
+    ] + COLUMNAS_NSE + COLUMNAS_TIPO_INT
 
     for col in cols_float:
         if col in df.columns:
@@ -393,21 +406,41 @@ def generar_datos_ejemplo(escenario: str) -> pd.DataFrame:
     return pd.DataFrame(registros)
 
 
+def es_sintetico(df: pd.DataFrame) -> bool:
+    """True si el DataFrame proviene de datos sintéticos (archivo_fuente SYNTHETIC_*)."""
+    if "archivo_fuente" not in df.columns:
+        return False
+    return df["archivo_fuente"].astype(str).str.startswith("SYNTHETIC").any()
+
+
 # ─────────────────────────────────────────────────────────────────────────────
 def main():
+    parser = argparse.ArgumentParser(
+        description="Procesa los CSV de GAMA en el dataset combinado del paper.")
+    parser.add_argument(
+        "--strict", action="store_true",
+        help="Aborta (exit 1) si algún escenario cae en datos sintéticos en lugar "
+             "de leer un CSV real de GAMA. Úsalo para corridas definitivas del paper.")
+    args = parser.parse_args()
+
     print("=" * 60)
     print("  Procesamiento de resultados GAMA — SMA Quito  v2")
     print("=" * 60)
     print(f"  BUS_FRACTION para corrección NSE: {BUS_FRACTION:.2f}  "
           f"({NB_BUSES_DEFAULT} buses / {NB_TOTAL_DEFAULT} total)")
+    if args.strict:
+        print("  Modo --strict: se abortará si se usan datos sintéticos.")
 
     resultados = {}
+    escenarios_sinteticos = []
 
     for escenario in ["E0", "EB"]:
         print(f"\n[{escenario}] Cargando datos...")
         df_raw    = cargar_runs(escenario)
         df_limpio = limpiar_dataframe(df_raw, escenario)
         resultados[escenario] = df_limpio
+        if es_sintetico(df_limpio):
+            escenarios_sinteticos.append(escenario)
 
         ruta = RESULTS_DIR / f"{escenario}_processed.csv"
         df_limpio.to_csv(ruta, index=False)
@@ -431,6 +464,21 @@ def main():
     ruta_res = RESULTS_DIR / "resumen_estadistico.csv"
     resumen.to_csv(ruta_res, index=False)
     print(f"[OK] Resumen estadístico: {ruta_res}")
+
+    # ── Aviso prominente de datos sintéticos (C2) ─────────────────────────────
+    if escenarios_sinteticos:
+        print("\n" + "!" * 60)
+        print("!!  ADVERTENCIA: DATOS SINTÉTICOS EN USO")
+        print(f"!!  Escenario(s) sin CSV real de GAMA: {', '.join(escenarios_sinteticos)}")
+        print("!!  Las tablas y figuras NO representan la simulación real.")
+        print("!!  Las figuras (03) llevarán la marca de agua 'DATOS SINTÉTICOS'.")
+        print("!" * 60)
+        if args.strict:
+            print("\n[ABORTADO] --strict activo y se usaron datos sintéticos. "
+                  "Re-corre el/los escenario(s) en GAMA y reintenta.")
+            sys.exit(1)
+    else:
+        print("\n[OK] Todos los escenarios usaron CSV reales de GAMA.")
 
     print("\n[DONE] Pipeline 01 completado. Ejecutar 02_compare_scenarios.py")
     print("\n  NOTA: Para el cálculo Δ Gini modal usar columnas *_corr,")
