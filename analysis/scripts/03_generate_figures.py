@@ -177,7 +177,6 @@ def fig1_flujo(e0_agg, eb_agg):
     sombrear_pico(ax)
     hora_ticks(ax)
     ax.set_ylabel("Vehículos por hora en el polígono")
-    ax.set_title("Fig. 1 — Flujo vehicular en el sector La Carolina: E0 vs EB")
     ax.legend(loc="upper right")
     ax.grid(True, axis="y")
 
@@ -214,7 +213,6 @@ def fig2_velocidad(e0_agg, eb_agg):
     sombrear_pico(ax)
     hora_ticks(ax)
     ax.set_ylabel("Velocidad media (km/h)")
-    ax.set_title("Fig. 2 — Velocidad media en el polígono La Carolina: E0 vs EB")
     ax.legend(loc="lower right")
     ax.grid(True, axis="y")
 
@@ -245,13 +243,10 @@ def fig3_decisiones(e0: pd.DataFrame, eb: pd.DataFrame):
         )
         for at in autotexts:
             at.set_fontsize(10)
-        ax.set_title(titulo, fontweight="bold")
 
     pie_decisiones(axes[0], e0, "E0 — Baseline\n(sin peaje)")
     pie_decisiones(axes[1], eb, "EB — Peaje franja horaria\n($2.00 USD en pico)")
 
-    fig.suptitle("Fig. 3 — Distribución de decisiones de los agentes BDI",
-                 fontsize=13, fontweight="bold", y=1.02)
     guardar(fig, "fig3_decisiones_bdi")
 
 
@@ -279,7 +274,6 @@ def fig4_modal_shift(e0: pd.DataFrame, eb: pd.DataFrame):
     ax.set_xticklabels(franjas, ha="center")
     ax.set_xlabel("Franja horaria")
     ax.set_ylabel("Modal shift → Metro (%)")
-    ax.set_title("Fig. 4 — Modal shift hacia el Metro de Quito por franja horaria: E0 vs EB")
     ax.legend()
     ax.grid(True, axis="y")
 
@@ -339,7 +333,6 @@ def fig5_benchmark(e0: pd.DataFrame, eb: pd.DataFrame):
     ax.set_xticks(x)
     ax.set_xticklabels(indicadores, ha="center")
     ax.set_ylabel("Porcentaje (%)")
-    ax.set_title("Fig. 5 — Comparación modelo SMA Quito vs. London Congestion Charge (2003)")
     ax.legend(loc="upper right")
     ax.grid(True, axis="y")
 
@@ -376,7 +369,6 @@ def fig6_equidad_recaudacion(e0: pd.DataFrame, eb: pd.DataFrame):
     axes[0].set_xticks(x)
     axes[0].set_xticklabels(["E0 — Baseline", "EB — Peaje"])
     axes[0].set_ylabel("Índice Gini modal")
-    axes[0].set_title("Equidad socioeconómica — Gini modal promedio")
     axes[0].grid(True, axis="y", alpha=0.3)
 
     for rect, valor in zip(axes[0].patches, [gini_e0, gini_eb]):
@@ -390,7 +382,6 @@ def fig6_equidad_recaudacion(e0: pd.DataFrame, eb: pd.DataFrame):
     axes[1].set_xticks(x)
     axes[1].set_xticklabels(["E0 — Baseline", "EB — Peaje"])
     axes[1].set_ylabel("USD/h")
-    axes[1].set_title("Recaudación estimada por hora simulada")
     axes[1].grid(True, axis="y", alpha=0.3)
 
     for rect, valor in zip(axes[1].patches, [rec_hora_e0, rec_hora_eb]):
@@ -399,8 +390,6 @@ def fig6_equidad_recaudacion(e0: pd.DataFrame, eb: pd.DataFrame):
                          xytext=(0, 3), textcoords="offset points",
                          ha="center", va="bottom", fontsize=9)
 
-    fig.suptitle("Fig. 6 — Equidad modal y recaudación por hora simulada",
-                 fontsize=13, fontweight="bold", y=1.02)
     guardar(fig, "fig6_equidad_recaudacion")
 
 
@@ -423,7 +412,6 @@ def fig7_tarifa_por_tipo(eb: pd.DataFrame):
 
     axes[0].bar(tipos, recaud, color=colores, edgecolor="white")
     axes[0].set_ylabel("Recaudación acumulada (USD)")
-    axes[0].set_title("Recaudación por tipo de vehículo")
     axes[0].grid(True, axis="y", alpha=0.3)
     for rect, v in zip(axes[0].patches, recaud):
         axes[0].annotate(f"${v:,.0f}", xy=(rect.get_x() + rect.get_width()/2, v),
@@ -432,20 +420,17 @@ def fig7_tarifa_por_tipo(eb: pd.DataFrame):
 
     axes[1].bar(tipos, pagos, color=colores, edgecolor="white")
     axes[1].set_ylabel("Nº de pagos (eventos de decisión)")
-    axes[1].set_title("Pagos de peaje por tipo de vehículo")
     axes[1].grid(True, axis="y", alpha=0.3)
     for rect, v in zip(axes[1].patches, pagos):
         axes[1].annotate(f"{v:,.0f}", xy=(rect.get_x() + rect.get_width()/2, v),
                          xytext=(0, 3), textcoords="offset points",
                          ha="center", va="bottom", fontsize=9)
 
-    nota = "Moto y Bus exonerados (tarifa $0)."
-    if sum(recaud) == 0:
-        nota = "Sin datos: re-correr EB en GAMA con el modelo actualizado. " + nota
-    fig.text(0.5, -0.02, nota, ha="center", fontsize=9, color="gray")
+    # nota = "Moto y Bus exonerados (tarifa $0)."
+    # if sum(recaud) == 0:
+    #     nota = "Sin datos: re-correr EB en GAMA con el modelo actualizado. " + nota
+    # fig.text(0.5, -0.02, nota, ha="center", fontsize=9, color="gray")
 
-    fig.suptitle("Fig. 7 — Diferenciación tarifaria por tipo de vehículo (EB)",
-                 fontsize=13, fontweight="bold", y=1.02)
     guardar(fig, "fig7_tarifa_por_tipo")
 
 
