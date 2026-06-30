@@ -1,0 +1,6 @@
+escenario,minuto,hora,es_hora_pico,nb_conductores,velocidad_media_kmh,pct_ruta_directa,pct_reroutean,pct_metro,modal_shift_acum,nb_restringidos_placa,directo_nse_alto,directo_nse_medio,directo_nse_bajo,metro_nse_alto,metro_nse_medio,metro_nse_bajo,rerouta_nse_alto,rerouta_nse_medio,rerouta_nse_bajo,archivo_fuente,recaudacion_acum_usd,hora_decimal,directo_nse_bajo_corr,metro_nse_bajo_corr,rerouta_nse_bajo_corr,pct_metro_bajo_corr,flujo_poligono,flujo_externo,pct_pagan
+E0_HET,375,6:15,False,300,31.6,82.3,7.7,10.0,472,65,44,105,98,4,12,14,3,13,7,E0_heterogeneo_metricas.csv,0.0,6.25,86,14,7,13.084112149532709,247,23,82.3
+E0_HET,390,6:30,False,300,32.7,81.3,7.7,11.0,1167,65,43,105,96,5,12,16,3,13,7,E0_heterogeneo_metricas.csv,0.0,6.5,84,16,7,14.953271028037381,244,23,81.3
+E0_HET,405,6:45,False,300,32.2,82.7,7.7,9.7,1830,65,44,106,98,4,11,14,3,13,7,E0_heterogeneo_metricas.csv,0.0,6.75,86,14,7,13.084112149532709,248,23,82.7
+E0_HET,420,7:00,True,300,32.5,82.3,7.7,10.0,2503,65,44,105,98,4,12,14,3,13,7,E0_heterogeneo_metricas.csv,0.0,7.0,86,14,7,13.084112149532709,247,23,82.3
+E0_HET,435,7:15,True,300,31.6,81.0,7.7,11.3,3121,65,42,105,96,6,12,16,3,13,7,E0_heterogeneo_metricas.csv,0.0,7.25,84,16,7,14.953271028037381,243,23,81.0

@@ -17,10 +17,9 @@ env/
 .ipynb_checkpoints/
 *.ipynb
 
-# ── Análisis — salidas generadas (no versionar) ───────────────────────────
-analysis/results/*.csv
-analysis/figures/*.png
-analysis/figures/*.pdf
+# ── Análisis — resultados FINALES (versionados) ───────────────────────────
+# Corrida final E0 vs EB (29 jun 2026): tablas y figuras del paper se versionan.
+# Las figuras .png se embeben en docs/PAPER.md, por lo que deben estar en git.
 
 # ── GIS pesado no usado por el modelo (>50 MB) ────────────────────────────
 # El modelo solo carga red_vial_la_carolina.shp; estas capas QGIS no se versionan

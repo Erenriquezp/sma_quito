@@ -1,0 +1,11 @@
+Métrica,E0 Baseline,EB Peaje,Δ Absoluto,Δ %,Unidad,¿Mejora?
+Flujo promedio en polígono (total),3913.0,3839.0,-74.0,-1.89,veh/h,✓
+Flujo promedio en polígono (hora pico),3635.69,3011.85,-623.85,-17.16,veh/h,✓
+Desplazamiento periférico (flujo externo),344.5,525.94,181.44,52.67,veh/h,✗
+Velocidad media en polígono (total),30.99,31.14,0.15,0.48,km/h,✓
+Velocidad media en polígono (hora pico),31.35,32.08,0.73,2.34,km/h,✓
+Modal shift → Metro (total),9.45,6.8,-2.65,-28.05,%,✗
+Modal shift → Metro (hora pico),9.83,14.29,4.46,45.34,%,✓
+Equidad socioeconómica — Δ Gini modal (promedio),0.15,0.34,0.19,125.16,índice 0–1,✗
+Equidad socioeconómica — Δ Gini modal (hora pico),0.12,0.1,-0.02,-16.19,índice 0–1,✓
+Recaudación estimada por hora simulada,0.0,762.15,,,USD/h,✗

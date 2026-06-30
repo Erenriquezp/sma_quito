@@ -1,3 +1,0 @@
-# Esta carpeta recibe los CSVs procesados generados por los scripts de análisis.
-# Los archivos generados están excluidos del control de versiones (.gitignore).
-# Ejecutar: python analysis/scripts/01_process_results.py

@@ -1,3 +1,0 @@
-# Esta carpeta recibe las figuras del paper generadas por los scripts de análisis.
-# Los archivos generados están excluidos del control de versiones (.gitignore).
-# Ejecutar el script: python analysis/scripts/03_generate_figures.py
