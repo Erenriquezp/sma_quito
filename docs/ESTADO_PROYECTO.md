@@ -7,9 +7,11 @@
 
 Modelos finales (`*2`), pipeline y paper completos. **El bloqueante quedó resuelto:** EB ya
 corre el día completo (06:15→22:00, 64 filas) y es comparable con E0. El pipeline `01→02→03`
-se regeneró con datos reales (sin sintéticos). Resultado honesto: la reducción de flujo en
-hora pico es **−17.2 %**, por debajo de la meta de −20 %, pero el modal shift y la velocidad
-mejoran. Quedan reproducibilidad en batch y el porte a Overleaf.
+se regeneró con datos reales (sin sintéticos) y `PAPER.md` ya tiene Resultados/Discusión
+reescritos con las cifras finales y las 9 figuras embebidas. Resultado honesto: la reducción
+de flujo en hora pico es **−17.2 %**, por debajo de la meta de −20 %, pero el modal shift y la
+velocidad mejoran. **Único pendiente real:** el porte del paper a Overleaf (y la reproducibilidad
+en batch).
 
 ---
 
@@ -43,7 +45,7 @@ Ambos escenarios: día completo, misma demanda (1928 veh). Fuente: CSV reales de
 | **OE2** | Conductores BDI por NSE + tipo de vehículo, 3 decisiones | ✅ |
 | **OE3** | Tercera placa + calibración AMT | 🟡 Parcial |
 | **OE4** | Ejecutar y comparar E0 vs EB | ✅ |
-| **OE5** | Paper (IEEE) | 🟡 Pendiente |
+| **OE5** | Paper (IEEE) | 🟡 Casi (falta Overleaf) |
 
 ---
 
@@ -52,8 +54,13 @@ Ambos escenarios: día completo, misma demanda (1928 veh). Fuente: CSV reales de
 - **Corrida completa de EB (ex-bloqueante):** EB ya llega al `do pause` de las 22:00 (64 filas,
   06:15→22:00), igual que E0 → ambos comparables. Pipeline `01→02→03` regenerado con esos CSV
   reales; las 7 figuras se reescribieron **sin marca de agua** (datos no sintéticos, `--strict` pasa).
+- **Resultados versionados:** se quitaron los `.gitkeep` y se ajustó `.gitignore`; las tablas
+  (`analysis/results/*.csv`) y las figuras (`*.png/*.pdf`) de la corrida final ya están en git.
+- **`PAPER.md` con datos reales:** Resumen, Resultados (Tablas 1–3), Discusión y Conclusiones
+  reescritos con las cifras finales; **9 figuras PNG embebidas** (Fig. 1 área QGIS, Fig. 2 entorno
+  GAMA EB, Figs. 3–9 del pipeline). Tarifa SUV corregida a $3.00 y ecuación tarifaria con factor
+  dinámico del gestor.
 - **Pipeline `01→02→03`** corriendo con datos reales (tablas, t-tests, Δ Gini, 7 figuras).
-- **Paper** (`PAPER.md`) y análisis (`ANALISIS_RESULTADOS.md`) alineados al modelo final.
 - **Frente A — tarifas diferenciadas por tipo:** implementado y validado (recaudación por tipo en
   el CSV; SUV/Carga pagan ≈1.5× el auto; Moto/Bus exentos).
 - **Frente B — peaje dinámico:** gestor corregido (densidad v/c, umbrales recalibrados, sliders).
@@ -67,11 +74,11 @@ Ambos escenarios: día completo, misma demanda (1928 veh). Fuente: CSV reales de
 
 ## Lo que falta de verdad
 
-### 1. 🟡 OE5 — actualizar Resultados/Discusión del paper y portar a Overleaf
+### 1. 🟡 OE5 — portar el paper a Overleaf
 
-Con los datos reales A+B ya disponibles, falta **escribir Resultados/Discusión en `PAPER.md`**
-con las cifras finales (incluida la hipótesis NO confirmada, −17.2 %) y **portar el paper a
-LaTeX/Overleaf (IEEE)** insertando `fig1–fig7` y citando la tabla de calibración.
+Resultados/Discusión de `PAPER.md` ya están escritos con datos reales y las figuras embebidas.
+Falta **portar el paper a LaTeX/Overleaf (IEEE)** (las figuras `.pdf` ya están listas para
+`\includegraphics`) y **citar la tabla de calibración** en la Metodología.
 
 ### 2. 🟠 Frente C — reproducibilidad en batch
 
