@@ -1,0 +1,735 @@
+% =====================================================================
+%  Universidad Central del Ecuador  -  Sistemas Colaborativos
+%  Simulacion Multiagente - Zona de Cobro por Congestion (La Carolina)
+%  Plantilla a dos columnas, limpia y profesional.
+%  Compilar 2 veces (o con latexmk) para resolver referencias cruzadas:
+%     latexmk -pdf main.tex      o      pdflatex main && pdflatex main
+%  Requiere la carpeta images/ junto a este archivo con las 9 figuras:
+%     fig1_mapa_poligono, fig02_entorno_gama_eb, fig3_flujo_vehicular,
+%     fig4_velocidad_media, fig5_decisiones_bdi, fig6_modal_shift,
+%     fig7_benchmark_londres, fig8_equidad_recaudacion, fig9_tarifa_por_tipo
+%     (mas el logoIEEEAccess.png, usado en el encabezado de cada pagina)
+% =====================================================================
+\documentclass[twocolumn,10pt]{article}
+
+% ----------------------- Codificacion e idioma -----------------------
+\usepackage[utf8]{inputenc}
+\usepackage[T1]{fontenc}
+\usepackage{lmodern}
+\usepackage[spanish,es-tabla]{babel}   % "Cuadro" -> "Tabla" automatico
+
+% ----------------------------- Matematicas ---------------------------
+\usepackage{amsmath,amssymb,amsfonts}
+
+% ------------------------ Graficos y tablas --------------------------
+\usepackage{graphicx}
+\usepackage{booktabs}      % reglas de tabla de calidad cientifica
+\usepackage{array}
+\usepackage{tabularx}      % columnas de ancho automatico (X)
+\usepackage{float}
+\usepackage{placeins}      % \FloatBarrier: evita que las figuras se pasen a Referencias
+\usepackage{caption}
+\usepackage{pifont}        % simbolos de verificacion (\ding)
+
+% --------------------------- Diseno y color --------------------------
+\usepackage{xcolor}
+\usepackage{titlesec}
+\usepackage{microtype}     % evita desbordes de texto en columnas
+\usepackage{enumitem}
+\usepackage[a4paper,total={175mm,245mm},left=18mm,top=20mm]{geometry}
+\usepackage{fancyhdr}
+\usepackage[hidelinks]{hyperref}
+
+\setlength{\columnsep}{6mm}
+
+% --- Paleta institucional (azul academico) ---
+\definecolor{azulUCE}{RGB}{31,97,164}
+\definecolor{azulOscuro}{RGB}{18,52,86}
+\definecolor{grisSuave}{RGB}{244,247,250}
+\definecolor{verdeOK}{RGB}{22,140,74}
+\definecolor{rojoNo}{RGB}{192,57,43}
+
+\newcommand{\yes}{\textcolor{verdeOK}{\ding{51}}}
+\newcommand{\no}{\textcolor{rojoNo}{\ding{55}}}
+
+\hypersetup{colorlinks=true,linkcolor=azulOscuro,citecolor=azulUCE,urlcolor=azulUCE}
+
+% --- Que las leyendas digan "Fig." y "Tabla" (estilo IEEE, en espanol) ---
+\AtBeginDocument{%
+  \renewcommand{\figurename}{Fig.}\renewcommand{\tablename}{Tabla}%
+  \ifdefined\decimalpoint\decimalpoint\fi% punto decimal tambien en modo matematico (consistencia con el texto)
+}
+
+% --- Estilo de secciones ---
+\titleformat{\section}{\normalsize\bfseries\color{azulUCE}}{\thesection.}{0.5em}{}
+\titleformat{\subsection}{\small\bfseries\color{azulOscuro}}{\thesubsection}{0.5em}{}
+\titlespacing*{\section}{0pt}{11pt}{5pt}
+\titlespacing*{\subsection}{0pt}{8pt}{3pt}
+
+% --- Estilo de leyendas (figuras/tablas) ---
+\captionsetup{font=small,labelfont={bf,color=azulUCE},labelsep=period}
+
+% --- Manejo de flotantes (muchas figuras/tablas a doble columna) ---
+\setcounter{topnumber}{2}
+\setcounter{dbltopnumber}{2}
+\setcounter{totalnumber}{4}
+\renewcommand{\topfraction}{0.92}
+\renewcommand{\dbltopfraction}{0.92}
+\renewcommand{\bottomfraction}{0.8}
+\renewcommand{\textfraction}{0.06}
+\renewcommand{\floatpagefraction}{0.7}
+\renewcommand{\dblfloatpagefraction}{0.7}
+
+% --- Encabezado tipo IEEE: logo arriba a la derecha + linea negra, en cada pagina ---
+\pagestyle{fancy}
+\fancyhf{}
+\fancyhead[R]{\includegraphics[height=1.1cm]{images/logoIEEEAccess.png}}
+\renewcommand{\headrulewidth}{1pt}
+\fancyfoot[C]{\small\thepage}
+\setlength{\headheight}{34pt}
+\setlength{\headsep}{10pt}
+
+% --- Cintillo institucional (texto de facultad, solo portada) ---
+\newcommand{\membrete}{%
+  \begin{center}
+    {\large\scshape\bfseries Universidad Central del Ecuador}\\[2pt]
+    {\small Facultad de Ingenier\'ia y Ciencias Aplicadas \,\textbar\, Carrera de Computaci\'on}\\[2pt]
+    {\small Asignatura: Sistemas Colaborativos (TGP09BFT03)}%
+  \end{center}
+}
+
+\begin{document}
+
+% =====================================================================
+%  CABECERA, TITULO, AUTORES Y RESUMEN  (ancho completo)
+% =====================================================================
+\twocolumn[%
+  \membrete
+  \vspace{14pt}
+  \begin{center}
+    {\LARGE\bfseries\color{azulOscuro}
+     Simulaci\'on Multiagente del Impacto de una Zona de Cobro por
+     Congesti\'on en el Sector Parque La Carolina:\\[3pt]
+     Evaluaci\'on de Pol\'iticas de Movilidad Urbana en Quito Mediante
+     Arquitectura BDI\par}
+
+    \vspace{12pt}
+    {\large Ariel Elizalde, Edison Enr\'iquez, Angelo Silva,
+            Stalin Acurio, Alexis Troya\par}
+    \vspace{5pt}
+    {\small Carrera de Computaci\'on, Facultad de Ingenier\'ia y Ciencias Aplicadas\\
+            Universidad Central del Ecuador, Quito, Ecuador\\[2pt]
+            \texttt{\{amelizalde, erenriquezp, amsilvac1, svacurio, aetroyab\}@uce.edu.ec}\par}
+    \vspace{4pt}
+    {\small\itshape Per\'iodo Acad\'emico 2026 --- Noveno Semestre\par}
+
+    \vspace{14pt}
+    % ---------- Resumen a ancho completo ----------
+    \begin{minipage}{0.93\textwidth}
+      {\color{azulUCE}\rule{\linewidth}{0.5pt}}\par\vspace{6pt}
+      {\small\noindent\textbf{Resumen---}En este trabajo se desarroll\'o y evalu\'o un
+      modelo de Simulaci\'on Multiagente (SMA) orientado a estimar el impacto de una
+      zona de cobro por congesti\'on en el pol\'igono comercial y financiero del Parque
+      La Carolina, en el Distrito Metropolitano de Quito. Sobre la plataforma GAMA y
+      con datos geoespaciales reales procesados en QGIS, se integr\'o la red vial
+      vectorial y se modelaron conductores heterog\'eneos ---diferenciados por nivel
+      socioecon\'omico y por cinco tipos de veh\'iculo--- parametrizados con reglas
+      deliberativas Creencia--Deseo--Intenci\'on (BDI), cuyas funciones de utilidad
+      multicriterio ponderaron tiempo de viaje, costo financiero y comodidad. Se
+      contrast\'o un escenario base sin peaje (E0) frente a un esquema de peaje por
+      franja horaria con tarifas diferenciadas por tipo de veh\'iculo y ajuste din\'amico
+      mediante un agente gestor (EB), tomando como referente el London Congestion
+      Charge. Los resultados mostraron que el peaje redujo el flujo vehicular interno en
+      hora pico un 17.2\,\% e increment\'o la transferencia modal al Metro un 45\,\% en esa
+      franja (de 9.8\,\% a 14.3\,\%), \'unico efecto estad\'isticamente significativo
+      ($p=0.004$); el agente gestor ejerci\'o su rango din\'amico, escalando la tarifa
+      base del auto de \$2.00 al techo de \$3.00 ante densidad alta y recaudando
+      \$12\,194 en el d\'ia. Sin embargo, la reducci\'on no alcanz\'o el umbral del 20\,\%
+      planteado y se observ\'o un desplazamiento perif\'erico del 52.7\,\%, por lo que la
+      hip\'otesis principal no se confirm\'o. Se concluy\'o que el instrumento oper\'o
+      correctamente, con beneficios moderados pero efectos colaterales relevantes bajo
+      la tarifa evaluada.\par}
+      \vspace{6pt}
+      {\small\noindent\textbf{Palabras clave---}Simulaci\'on multiagente, arquitectura
+      BDI, tarificaci\'on por congesti\'on, GAMA, QGIS, modelado basado en agentes,
+      movilidad urbana, Quito.\par}
+      \vspace{6pt}
+      {\color{azulUCE}\rule{\linewidth}{0.5pt}}
+    \end{minipage}
+    \vspace{16pt}
+  \end{center}
+]
+
+% =====================================================================
+%  1. INTRODUCCION   (tiempo presente)
+% =====================================================================
+\section{Introducci\'on}
+El Distrito Metropolitano de Quito (DMQ) registra una saturaci\'on cr\'itica de su
+infraestructura vial por el crecimiento sostenido de un parque automotor que supera
+las 600\,000 unidades en circulaci\'on activa \cite{inec2023}. Esta presi\'on genera
+externalidades negativas que degradan la productividad de la capital: p\'erdida de
+horas-persona en congesti\'on, mayor consumo energ\'etico y aumento de emisiones. El
+sector del Parque La Carolina ---delimitado por las avenidas Naciones Unidas, Amazonas,
+De los Shyris, Eloy Alfaro y 6 de Diciembre--- concentra el n\'ucleo financiero de la
+urbe y, por la convergencia de viajes pendulares, carece de mecanismos automatizados de
+gesti\'on adaptativa de la demanda.
+
+Ante la propuesta conceptual del Municipio del DMQ de implementar una zona de
+tarificaci\'on vial en este sector, se identifica un vac\'io de evidencia computacional
+publicada que eval\'ue cuantitativamente la viabilidad de la medida en el contexto
+espec\'ifico de Quito. Los modelos agregados tradicionales fallan al promediar las
+conductas individuales; por ello, el Modelado Basado en Agentes (ABM) resulta id\'oneo,
+pues representa la heterogeneidad de los conductores, captura la emergencia de
+fen\'omenos sist\'emicos ---como el desplazamiento del tr\'afico hacia v\'ias
+perif\'ericas--- y permite evaluar impactos de equidad socioecon\'omica
+\cite{gama2023,etrr2023}. La tarificaci\'on din\'amica mediante agentes deliberativos es,
+adem\'as, una l\'inea metodol\'ogica activa en la ingenier\'ia de transporte sostenible
+\cite{magtToll2024,kaddoura2019}.
+
+El \textbf{objetivo general} es desarrollar un SMA con arquitectura BDI e integraci\'on
+de datos geoespaciales reales que simule y eval\'ue el impacto de una zona de cobro por
+congesti\'on en el sector Parque La Carolina. Como \textbf{objetivos espec\'ificos} se
+plantean: (i)~integrar la red vial real del pol\'igono en un entorno de simulaci\'on
+geolocalizado; (ii)~modelar el comportamiento deliberativo de distintos perfiles de
+conductores mediante funciones de utilidad multicriterio; y (iii)~contrastar
+cuantitativamente un escenario base frente a un escenario de peaje din\'amico,
+compar\'andolo con el referente emp\'irico de Londres.
+
+El estudio se gu\'ia por la \textbf{hip\'otesis} de que la implementaci\'on de una tarifa
+din\'amica reduce el volumen vehicular de paso interno en al menos un 20\,\%, incrementa
+el uso intermodal del Metro de Quito y no provoca un colapso por desv\'io en las arterias
+perif\'ericas. El umbral del 20\,\% se establece tomando como referencia el $-27$\,\%
+observado en el London Congestion Charge durante sus primeros seis meses (2003)
+\cite{london2020,london2024}. El aporte de este trabajo es ofrecer la primera evidencia
+computacional de tarificaci\'on por congesti\'on, basada en agentes BDI con datos
+geoespaciales reales, para una ciudad andina latinoamericana con un sistema de Metro de
+operaci\'on reciente.
+
+% =====================================================================
+%  2. MARCO TEORICO   (tiempo presente)
+% =====================================================================
+\section{Marco Te\'orico y Trabajo Relacionado}
+El control de la congesti\'on urbana mediante sistemas multiagente constituye una
+l\'inea activa de la ingenier\'ia de transporte sostenible \cite{gama2023,etrr2023}. Los
+enfoques reactivos tradicionales son superados por arquitecturas deliberativas
+cognitivas como el modelo BDI (Creencias, Deseos, Intenciones), formalizado por Rao y
+Georgeff \cite{raoGeorgeff1995}. En un ecosistema de transporte urbano:
+
+\begin{itemize}[leftmargin=1.3em,itemsep=2pt,topsep=2pt]
+  \item \textbf{Creencias} --- estado informacional del conductor: posici\'on en la red,
+        tarifa vigente en los puntos de control y restricciones activas por el sistema
+        local de ``tercera placa''.
+  \item \textbf{Deseos} --- objetivos individuales: minimizar el tiempo de viaje, reducir
+        los costos financieros directos y resguardar el confort.
+  \item \textbf{Intenciones} --- el plan comprometido tras la deliberaci\'on: mantener la
+        ruta pagando el peaje, desviarse (\textit{rerouting}) por la periferia o ejecutar
+        un cambio intermodal hacia el Metro.
+\end{itemize}
+
+Alineado con los fundamentos de los sistemas colaborativos y la ingenier\'ia de sistemas
+complejos \cite{gomez2013}, el entorno de simulaci\'on se clasifica como parcialmente
+observable, din\'amico y continuo. La coordinaci\'on sist\'emica se alcanza mediante un
+agente facilitador (Gestor AMT) que emite se\~nales tarifarias en funci\'on de la
+densidad global del \'area, buscando optimizar la eficiencia de la red de forma
+distribuida, en l\'inea con los esquemas de \textit{congestion pricing} basados en
+agentes reportados en la literatura \cite{magtToll2024,kaddoura2019}.
+
+% =====================================================================
+%  3. METODOLOGIA   (tiempo pasado, orden cronologico)
+% =====================================================================
+\section{Metodolog\'ia}
+La construcci\'on y calibraci\'on del simulador se ejecut\'o de forma cronol\'ogica en tres
+fases: preparaci\'on geoespacial, especificaci\'on conductual BDI y dise\~no experimental
+de escenarios.
+
+\subsection{Pipeline de integraci\'on geoespacial}
+Se delimit\'o el pol\'igono de estudio del Parque La Carolina en QGIS~3.x. Mediante el
+complemento QuickOSM se descarg\'o la red vial vectorial real desde OpenStreetMap y se
+aplic\'o una limpieza topol\'ogica para eliminar nodos duplicados, corregir el sentido de
+los flujos y estructurar el grafo de conectividad. Se vectorizaron las capas de los cinco
+accesos semaforizados (puntos de control C1--C5) y la ubicaci\'on de las estaciones del
+Metro adyacentes (I\~naquito y La Carolina). La base geoespacial se export\'o en formato
+Shapefile bajo la proyecci\'on UTM Zona 17S (EPSG:32717), asegurando precisi\'on m\'etrica
+al importarse en GAMA mediante la capa \texttt{road\_network}. El entorno geom\'etrico se
+detalla en la Fig.~\ref{fig:mapa}.
+
+\begin{figure}[!t]
+  \centering
+  \includegraphics[width=\columnwidth]{images/fig1_mapa_poligono.png}
+  \caption{Pol\'igono georreferenciado del Parque La Carolina (QGIS): red vial vectorial
+           real de la zona de cobro por congesti\'on, sobre la cartograf\'ia base de Quito.}
+  \label{fig:mapa}
+\end{figure}
+
+\subsection{Parametrizaci\'on y funci\'on de utilidad de los agentes}
+Se codificaron en lenguaje GAML conductores BDI gobernados por dos identidades
+superpuestas. La primera es el \textbf{nivel socioecon\'omico (NSE)} ---Alto, Medio y
+Bajo---, que fija la disposici\'on a pagar ($wtp$), los pesos de la funci\'on de utilidad y
+el umbral de congesti\'on que dispara la deliberaci\'on (Tabla~\ref{tab:nse}). La segunda
+es el \textbf{tipo de veh\'iculo}, que determina la velocidad libre, el factor de
+ocupaci\'on de v\'ia y la exoneraci\'on o no del peaje (Tabla~\ref{tab:vehiculos}). Esta
+doble parametrizaci\'on es el mecanismo que habilita el an\'alisis de equidad: distintos
+perfiles enfrentan el mismo cobro con distinta elasticidad.
+
+% ---------- TABLA I: parametros NSE (ancho completo) ----------
+\begin{table*}[!t]
+  \centering
+  \caption{Par\'ametros por nivel socioecon\'omico (NSE).}
+  \label{tab:nse}
+  \small
+  \renewcommand{\arraystretch}{1.25}
+  \begin{tabular}{@{}lcccccc@{}}
+    \toprule
+    \textbf{NSE} & \textbf{Proporci\'on} & \textbf{$wtp$ (USD)} & \textbf{$w_1$ (tiempo)} &
+    \textbf{$w_2$ (costo)} & \textbf{$w_3$ (comodidad)} & \textbf{Umbral congesti\'on}\\
+    \midrule
+    Alto  & 15\,\% & 3.00 & 0.35 & 0.15 & 0.50 & 0.40\\
+    Medio & 45\,\% & 2.25 & 0.35 & 0.35 & 0.30 & 0.55\\
+    Bajo  & 40\,\% & 0.50 & 0.20 & 0.65 & 0.15 & 0.70\\
+    \bottomrule
+  \end{tabular}
+\end{table*}
+
+% ---------- TABLA II: tipos de vehiculo (ancho completo) ----------
+\begin{table*}[!t]
+  \centering
+  \caption{Tipos de veh\'iculo, flota inicial (300 agentes) y tratamiento tarifario.}
+  \label{tab:vehiculos}
+  \small
+  \renewcommand{\arraystretch}{1.3}
+  \begin{tabularx}{\textwidth}{@{}lcccX@{}}
+    \toprule
+    \textbf{Tipo} & \textbf{Flota} & \textbf{Factor de v\'ia} &
+    \textbf{Tarifa pico (USD)} & \textbf{Observaci\'on}\\
+    \midrule
+    Moto  & 45 (15\,\%)  & 0.3 & \textbf{Exonerado} & Mayor agilidad; umbral reducido.\\
+    Auto  & 165 (55\,\%) & 1.0 & 2.00 & Tarifa base de referencia.\\
+    SUV   & 45 (15\,\%)  & 1.5 & 3.00 & Paga 1.5$\times$ la tarifa base del auto.\\
+    Bus   & 30 (10\,\%)  & 3.0 & \textbf{Exonerado} & Ruta fija; NSE Bajo forzado.\\
+    Carga & 15 (5\,\%)   & 2.5 & 3.00 & Mayor impacto vial (1.5$\times$ el auto).\\
+    \bottomrule
+  \end{tabularx}
+\end{table*}
+
+La toma de decisiones intermodal y de enrutamiento se gobern\'o mediante la funci\'on de
+utilidad multicriterio de la ecuaci\'on~\eqref{eq:utilidad}:
+
+\begin{equation}
+U(\text{alt}) = w_1\,\frac{1}{T_v} + w_2\,\frac{1}{C} + w_3\,C_p
+\label{eq:utilidad}
+\end{equation}
+
+\noindent donde $T_v$ es el tiempo estimado de viaje, $C$ el costo econ\'omico directo
+asociado a la tarifa y $C_p$ el coeficiente de comodidad percibida del modo. El conductor
+selecciona la intenci\'on de m\'axima utilidad entre RUTA\_DIRECTA, REROUTEAR y METRO;
+cuando la tarifa efectiva supera su disposici\'on a pagar ($\tau_{ef} > wtp$), la utilidad
+de la ruta directa se penaliza, forzando una alternativa.
+
+A diferencia de la propuesta conceptual inicial de una tarifa plana, el modelo final
+aplic\'o una \textbf{se\~nal tarifaria diferenciada por tipo de veh\'iculo y activa solo en
+franja pico}, seg\'un la ecuaci\'on~\eqref{eq:tarifa}:
+
+\begin{equation}
+\tau_k(t)=
+\begin{cases}
+\$2.00 & k=\text{Auto},\; t\in\text{pico}\\[2pt]
+\$3.00 & k\in\{\text{SUV, Carga}\},\; t\in\text{pico}\\[2pt]
+\$0.00 & k\in\{\text{Moto, Bus}\}\;\lor\; t\notin\text{pico}
+\end{cases}
+\label{eq:tarifa}
+\end{equation}
+
+\noindent con franjas pico de 07:00--10:00 y 17:00--20:00. La tarifa que cada agente
+realmente paga (\textbf{tarifa efectiva}) escala la tarifa base de su tipo por un factor
+din\'amico $f_g$ fijado por el gestor, seg\'un la ecuaci\'on~\eqref{eq:efectiva}:
+
+\begin{equation}
+\tau_{ef}=\tau_k\cdot f_g,\qquad f_g=\frac{\tau_{\text{din}}}{\tau_{\text{Auto}}}
+\label{eq:efectiva}
+\end{equation}
+
+\noindent donde $\tau_{\text{din}}$ es la tarifa de auto vigente que define el gestor y
+$\tau_{ef}=0$ si el tipo est\'a exonerado o $t\notin$ pico. As\'i, una elevaci\'on del
+factor $f_g$ encarece proporcionalmente a todos los tipos no exonerados (p.\,ej., con
+$f_g=1.5$ el auto paga \$3.00 y SUV/Carga \$4.50). Sobre esta se\~nal base oper\'o un
+\textbf{agente gestor (GestorAMT)} con arquitectura BDI deliberativa que, cada 30 ciclos,
+ajust\'o din\'amicamente $\tau_{\text{din}}$ en el rango $[\$0.50,\ \$3.00]$ en pasos de
+\$0.25, seleccionando entre las intenciones MANTENER, SUBIR, BAJAR o SUSPENDER en
+funci\'on de la densidad del pol\'igono, la velocidad media y la saturaci\'on del Metro, y
+difundi\'endola a los puntos de control mediante un patr\'on FIPA.
+
+El indicador de desempe\~no central se defini\'o como la reducci\'on porcentual del flujo
+vehicular interno entre el escenario base (0) y el regulatorio (B), expresada en la
+ecuaci\'on~\eqref{eq:reduccion}:
+
+\begin{equation}
+\Delta Q_{int}=\frac{Q_{int}^{(0)}-Q_{int}^{(B)}}{Q_{int}^{(0)}}\times 100\,\%
+\label{eq:reduccion}
+\end{equation}
+
+Para evaluar la equidad, se calcul\'o el \textbf{\'indice de Gini modal} sobre la
+participaci\'on del Metro por estrato NSE, seg\'un la ecuaci\'on~\eqref{eq:gini}:
+
+\begin{equation}
+\begin{aligned}
+G   &= \frac{n+1-2\sum_{i=1}^{n} L_i}{n},\\[2pt]
+L_i &= \frac{\sum_{j=1}^{i} x_{(j)}}{\sum_{j=1}^{n} x_{(j)}}
+\end{aligned}
+\label{eq:gini}
+\end{equation}
+
+\noindent donde $x_{(j)}$ son las cuotas de uso del Metro ordenadas por estrato. Para este
+an\'alisis se aplic\'o una correcci\'on que descuenta la contribuci\'on de los buses
+(siempre RUTA\_DIRECTA y NSE Bajo por dise\~no), evitando inflar artificialmente ese
+contador.
+
+\begin{figure}[!t]
+  \centering
+  \includegraphics[width=\columnwidth]{images/fig02_entorno_gama_eb.png}
+  \caption{Entorno de GAMA Platform ejecutando el escenario EB al cierre del d\'ia
+           (22:00): flota heterog\'enea sobre la red de La Carolina, puntos de control
+           C1--C11, zona de cobro activa y los paneles de equidad NSE y recaudaci\'on
+           acumulada (\$12\,208).}
+  \label{fig:gama}
+\end{figure}
+
+\subsection{Especificaci\'on de escenarios}
+Se ejecutaron computacionalmente dos escenarios en un horizonte simulado de 06:00 a 22:00
+(paso de 10\,s, exportaci\'on de m\'etricas cada $\sim$15\,min sim):
+\begin{enumerate}[leftmargin=1.4em,itemsep=2pt,topsep=2pt]
+  \item \textbf{Escenario E0 (l\'inea base):} situaci\'on vial actual del DMQ con esquema
+        de Pico y Placa activo, sin cobros por circulaci\'on interna y con la oferta base
+        del Metro. Los puntos de control existen pero no cobran.
+  \item \textbf{Escenario EB (peaje por franja horaria):} misma flota y red que E0, m\'as
+        la maquinaria de cobro. El peaje se activ\'o solo en franja pico con tarifas
+        diferenciadas por tipo de veh\'iculo (Auto \$2.00, SUV y Carga \$3.00; Moto y Bus
+        exonerados), gestionado din\'amicamente por el GestorAMT en el rango
+        $[\$0.50,\ \$3.00]$. Oper\'o con tercera placa activa ($\approx$20\,\% de la flota,
+        restricci\'on 06:00--20:00) y \textit{modal shift} hacia dos estaciones del Metro
+        (I\~naquito y La Carolina).
+\end{enumerate}
+
+Ambos escenarios partieron de una flota de 300 conductores que se increment\'o mediante
+inyecciones de tr\'afico en hora pico (hasta $\sim$1928 agentes activos al cierre del
+d\'ia), reproduciendo las oleadas de ingreso al cord\'on. La velocidad media se midi\'o
+dentro de la zona de cobro como $V_{libre}\times$ coeficiente de congesti\'on, para no
+diluir el efecto del peaje con la red perif\'erica. Cada escenario produjo 64 registros
+temporales que la canalizaci\'on en Python (pandas/NumPy/SciPy) proces\'o para generar las
+tablas comparativas, las pruebas estad\'isticas y las figuras.
+
+% =====================================================================
+%  4. RESULTADOS
+% =====================================================================
+\section{Resultados}
+Las series temporales y m\'etricas agregadas se exportaron en archivos tabulares tras la
+ejecuci\'on de los ciclos en GAMA. Los resultados consolidados se presentan en la
+Tabla~\ref{tab:metricas}.
+
+% ---------- TABLA 1: metricas E0 vs EB (ancho completo) ----------
+\begin{table*}[!t]
+  \centering
+  \caption{Comparativa de m\'etricas de rendimiento de la red vial (E0 vs EB).}
+  \label{tab:metricas}
+  \small
+  \renewcommand{\arraystretch}{1.25}
+  \begin{tabularx}{\textwidth}{@{}Xrrrc@{}}
+    \toprule
+    \textbf{Variable evaluada} & \textbf{E0 (base)} & \textbf{EB (peaje)} &
+    \textbf{$\Delta$\,\%} & \textbf{\textquestiondown Mejora?}\\
+    \midrule
+    Flujo interno --- total (veh/h)                       & 3913.00 & 3839.00 & $-1.89$   & \yes\\
+    \textbf{Flujo interno --- hora pico (veh/h)}          & 3635.69 & 3011.85 & $\mathbf{-17.16}$ & \yes\\
+    Desplazamiento perif\'erico (veh/h)                   & 344.50  & 525.94  & $+52.67$  & \no\\
+    Velocidad media --- total (km/h)                      & 30.99   & 31.14   & $+0.48$   & \yes\\
+    \textbf{Velocidad media --- hora pico (km/h)}         & 31.35   & 32.08   & $\mathbf{+2.34}$  & \yes\\
+    Modal shift $\rightarrow$ Metro --- total (\%)        & 9.45    & 6.80    & $-28.05$  & \no\\
+    \textbf{Modal shift $\rightarrow$ Metro --- pico (\%)}& 9.83    & 14.29   & $\mathbf{+45.34}$ & \yes\\
+    $\Delta$ Gini modal --- hora pico (0--1)              & 0.12    & 0.10    & $-16.19$  & \yes\\
+    $\Delta$ Gini modal --- promedio diario (0--1)        & 0.15    & 0.34    & $+125.16$ & \no\\
+    Recaudaci\'on estimada (USD/h)                        & 0.00    & 762.15  & ---       & ---\\
+    \bottomrule
+  \end{tabularx}
+\end{table*}
+
+La respuesta din\'amica del volumen interno ante la activaci\'on de la ventana tarifaria
+se grafica en la Fig.~\ref{fig:flujo}, y la velocidad media comparada en la
+Fig.~\ref{fig:velocidad}. La bifurcaci\'on de intenciones (\textit{modal shift}) entre
+perfiles se visualiza en las Figs.~\ref{fig:bdi} y~\ref{fig:modal}, el contraste con el
+referente de Londres en la Fig.~\ref{fig:benchmark}, y la equidad, recaudaci\'on y
+diferenciaci\'on tarifaria en las Figs.~\ref{fig:equidad} y~\ref{fig:tarifatipo}.
+
+% ---------- FIGURAS 3 y 4: flujo y velocidad (doble columna) ----------
+\begin{figure*}[!t]
+  \centering
+  \begin{minipage}{0.47\textwidth}
+    \centering
+    \includegraphics[width=\linewidth]{images/fig3_flujo_vehicular.png}
+    \caption{Curvas temporales del volumen de veh\'iculos activos dentro del per\'imetro de
+             La Carolina (E0 vs EB) a lo largo del d\'ia.}
+    \label{fig:flujo}
+  \end{minipage}\hfill
+  \begin{minipage}{0.47\textwidth}
+    \centering
+    \includegraphics[width=\linewidth]{images/fig4_velocidad_media.png}
+    \caption{Evoluci\'on de la velocidad media dentro del pol\'igono de cobro (E0 vs EB).}
+    \label{fig:velocidad}
+  \end{minipage}
+\end{figure*}
+
+% ---------- FIGURAS 5 y 6: decisiones BDI y modal shift (doble columna) ----------
+\begin{figure*}[!t]
+  \centering
+  \begin{minipage}{0.47\textwidth}
+    \centering
+    \includegraphics[width=\linewidth]{images/fig5_decisiones_bdi.png}
+    \caption{Distribuci\'on de intenciones de la flota (ruta directa / \textit{rerouting}
+             / Metro) por escenario.}
+    \label{fig:bdi}
+  \end{minipage}\hfill
+  \begin{minipage}{0.47\textwidth}
+    \centering
+    \includegraphics[width=\linewidth]{images/fig6_modal_shift.png}
+    \caption{Transferencia modal hacia el Metro por franja horaria (E0 vs EB).}
+    \label{fig:modal}
+  \end{minipage}
+\end{figure*}
+
+Durante la hora pico, el peaje redujo el flujo interno de 3635.7 a 3011.9\,veh/h
+($-17.16$\,\%) y elev\'o la velocidad media de 31.35 a 32.08\,km/h ($+2.34$\,\%). La
+transferencia modal al Metro en pico creci\'o de 9.83\,\% a 14.29\,\% ($+45.34$\,\%). En
+contraste, el desplazamiento perif\'erico aument\'o un 52.67\,\% (de 344.5 a
+525.9\,veh/h), evidenciando la reasignaci\'on de parte del tr\'afico hacia v\'ias no
+cobradas. El \'indice de Gini modal en hora pico se mantuvo pr\'acticamente estable
+(0.12~$\rightarrow$~0.10), pero su promedio diario empeor\'o (0.15~$\rightarrow$~0.34): al
+activarse el cobro solo en pico, el uso del Metro se concentra en esas franjas y cae casi
+a cero en valle, lo que eleva la desigualdad modal medida sobre el d\'ia completo. A
+diferencia de corridas previas, el GestorAMT ejerci\'o plenamente su margen din\'amico:
+escal\'o la tarifa base del auto desde \$2.00 hasta el techo de \$3.00 (factor 1.5) en
+ambas franjas pico ante densidad alta, encareciendo proporcionalmente a SUV y Carga hasta
+\$4.50. El escenario EB acumul\'o una recaudaci\'on de 12\,194\,USD ($\sim$762.15\,USD/h
+simulada), desglosada por tipo de veh\'iculo en la Tabla~\ref{tab:recaudacion}. Las
+pruebas $t$ de Student arrojaron significancia \'unicamente para la transferencia modal
+($p=0.004$), mientras que el flujo ($p=0.785$) y la velocidad ($p=0.740$) no resultaron
+significativos. La Tabla~\ref{tab:londres} contrasta estos hallazgos con las metas del
+\textit{benchmark}.
+
+% ---------- FIGURA 7: benchmark Londres (una columna) ----------
+\begin{figure}[!t]
+  \centering
+  \includegraphics[width=\columnwidth]{images/fig7_benchmark_londres.png}
+  \caption{Comparaci\'on de los indicadores del modelo EB frente a las metas del London
+           Congestion Charge.}
+  \label{fig:benchmark}
+\end{figure}
+
+% ---------- TABLA 2: validacion vs Londres (ancho completo) ----------
+\begin{table*}[!t]
+  \centering
+  \caption{Validaci\'on contrafactual frente al London Congestion Charge.}
+  \label{tab:londres}
+  \small
+  \renewcommand{\arraystretch}{1.3}
+  \begin{tabularx}{\textwidth}{@{}lllXc@{}}
+    \toprule
+    \textbf{Indicador} & \textbf{Londres 2003} & \textbf{Meta Quito} &
+    \textbf{Modelo EB} & \textbf{\textquestiondown Cumple?}\\
+    \midrule
+    Reducci\'on vehicular (hora pico) & $-27$\,\% & $\geq -20$\,\% & $-17.2$\,\% & \no\\
+    Mejora de velocidad (hora pico)   & $+20$\,\% & $>0$\,\%       & $+2.3$\,\%  & \yes\\
+    Modal shift a transporte p\'ublico & $\sim$12\,\% & $>5$\,\%   & $\sim$14.3\,\% & \yes\\
+    Tarifa pico & \pounds5 $\approx$ \$6.0 & \$2.00--\$3.00 propuesto &
+      Auto \$2--3; SUV/Carga \$3--4.5 (din\'amica); Moto/Bus exentos & ---\\
+    \bottomrule
+  \end{tabularx}
+\end{table*}
+
+% ---------- FIGURA 8: equidad y recaudacion (una columna) ----------
+\begin{figure}[!t]
+  \centering
+  \includegraphics[width=\columnwidth]{images/fig8_equidad_recaudacion.png}
+  \caption{\'Indice de Gini modal y recaudaci\'on acumulada del escenario EB.}
+  \label{fig:equidad}
+\end{figure}
+
+% ---------- FIGURA 9: recaudacion por tipo (una columna) ----------
+\begin{figure}[!t]
+  \centering
+  \includegraphics[width=\columnwidth]{images/fig9_tarifa_por_tipo.png}
+  \caption{Recaudaci\'on acumulada y n\'umero de pagos por tipo de veh\'iculo (Auto, SUV,
+           Carga; Moto y Bus exonerados).}
+  \label{fig:tarifatipo}
+\end{figure}
+
+% ---------- TABLA 3: recaudacion por tipo (una columna) ----------
+\begin{table}[!t]
+  \centering
+  \caption{Recaudaci\'on acumulada por tipo de veh\'iculo (escenario EB, d\'ia completo).}
+  \label{tab:recaudacion}
+  \small
+  \renewcommand{\arraystretch}{1.25}
+  \begin{tabularx}{\columnwidth}{@{}Xrrr@{}}
+    \toprule
+    \textbf{Tipo} & \textbf{Recaud.\ (USD)} & \textbf{Pagos} & \textbf{Tarifa ef.\ (USD)}\\
+    \midrule
+    Auto        & 7334.00  & 3378 & 2.17\\
+    SUV         & 2583.75  & 1115 & 2.32\\
+    Carga       & 2276.63  & 1048 & 2.17\\
+    Moto / Bus  & 0.00     & 0    & 0.00 (exon.)\\
+    \midrule
+    \textbf{Total} & \textbf{12\,194.38} & \textbf{5541} & ---\\
+    \bottomrule
+  \end{tabularx}
+\end{table}
+
+La tarifa media efectiva por pago es similar entre tipos pese a las bases diferenciadas
+(SUV/Carga $=1.5\times$ el auto): cuando el factor din\'amico elev\'o las tarifas de SUV y
+Carga por encima de la disposici\'on a pagar de muchos de esos conductores, estos se
+desviaron o cambiaron de modo en lugar de pagar, de modo que los pagos efectivamente
+registrados se concentran en los tramos de tarifa m\'as baja.
+
+% =====================================================================
+%  5. DISCUSION   (tiempo presente/pasado)
+% =====================================================================
+\section{Discusi\'on}
+Los patrones emergentes de la simulaci\'on evidenciaron una correspondencia direccional
+con las teor\'ias de gesti\'on de demanda de transporte: al imponerse la penalizaci\'on
+financiera en EB, los conductores modificaron sus intenciones en funci\'on de su
+elasticidad econ\'omica, desvi\'andose hacia la periferia o transfiri\'endose al Metro para
+preservar su utilidad. Este comportamiento confirm\'o que el mecanismo BDI oper\'o
+correctamente y que el modelo constituye una herramienta de evaluaci\'on v\'alida, con
+independencia del signo del resultado de pol\'itica.
+
+No obstante, la magnitud del efecto, aunque relevante, se qued\'o por debajo del referente
+de validaci\'on. La evidencia muestra que un peaje urbano reduce el volumen de tr\'afico
+que ingresa a la zona central entre un 15 y un 27\,\% y disminuye la congesti\'on en torno
+a un 30\,\% durante el primer a\~no, incrementando las velocidades de circulaci\'on
+\cite{london2020,london2024,atmos2012}. En el presente modelo, la reducci\'on de flujo en
+hora pico ($-17.2$\,\%) se ubic\'o dentro del rango inferior emp\'irico de Londres
+($-15$\,\%) pero no alcanz\'o el umbral de validaci\'on del 20\,\%, por lo que \textbf{la
+hip\'otesis principal no se confirm\'o}. Tres factores explican esta brecha. Primero, pese
+a que el GestorAMT escal\'o la tarifa hasta su techo (\$3.00 para el auto, \$4.50 para
+SUV/Carga), las tarifas evaluadas siguieron siendo menores que la de Londres
+(\pounds5~$\approx$~\$6.0 USD en 2003); adem\'as, la exoneraci\'on de motos y buses ---los
+modos m\'as numerosos tras el auto--- acot\'o la fracci\'on de flota efectivamente
+disuadida, traduci\'endose en una elasticidad de demanda d\'ebil. Segundo, se observ\'o un
+fuerte efecto de desplazamiento perif\'erico ($+52.7$\,\%), coherente con la literatura que
+advierte que parte del tr\'afico se reasigna a v\'ias no cobradas en lugar de desaparecer
+\cite{london2024}; este desv\'io explica buena parte de la ca\'ida de flujo interno.
+Tercero, el peaje no agrav\'o la inequidad modal dentro de la franja de cobro (Gini pico
+0.12~$\rightarrow$~0.10), pero s\'i elev\'o la desigualdad modal medida sobre el d\'ia
+completo (Gini promedio 0.15~$\rightarrow$~0.34), al concentrar el uso del Metro en las
+horas pico y dejarlo casi nulo en valle; este patr\'on temporal, m\'as que un sesgo
+socioecon\'omico directo, es el origen del deterioro del indicador diario.
+
+Se identifica, adem\'as, una diferencia anal\'itica crucial respecto a Londres: la capital
+brit\'anica contaba con una red de transporte p\'ublico madura antes del cobro, mientras
+que el Metro de Quito opera comercialmente solo desde diciembre de 2023 \cite{metro2025}.
+Los datos de calibraci\'on indican que $\sim$15\,\% de los usuarios actuales del Metro
+migr\'o desde el veh\'iculo particular ($\sim$10\,000 autos/d\'ia ya removidos), de modo
+que la simulaci\'on midi\'o el efecto \textit{adicional} del peaje superpuesto a una
+absorci\'on modal base a\'un en consolidaci\'on. Esto sugiere que el bajo rendimiento
+observado responde al dise\~no tarifario y a la madurez del sistema de absorci\'on, m\'as
+que a una inviabilidad estructural del instrumento.
+
+Como limitaci\'on metodol\'ogica, las velocidades medias simuladas ($\sim$31\,km/h)
+excedieron el rango emp\'irico de hora pico del DMQ (14--18\,km/h), por lo que los valores
+absolutos deben leerse como tendencias relativas entre escenarios y no como predicciones
+puntuales. Asimismo, la colocaci\'on interactiva de los puntos de control en los modelos
+configurables limita por ahora la reproducibilidad en ejecuci\'on desatendida.
+
+% =====================================================================
+%  6. CONCLUSIONES   (tiempo pasado, ligadas a los objetivos)
+% =====================================================================
+\FloatBarrier
+\section{Conclusiones}
+El desarrollo del modelo multiagente integrando GAMA Platform y QGIS~3.x permiti\'o
+evaluar con rigor el impacto de una pol\'itica de tarificaci\'on vial en un entorno urbano
+andino. Respecto al \textbf{primer objetivo}, se concluy\'o que la ingesta de las redes
+viales vectoriales reales desde OpenStreetMap constituy\'o una plataforma geom\'etrica de
+alta fidelidad, adecuada para el monitoreo de los flujos continuos. En relaci\'on con el
+\textbf{segundo objetivo}, los perfiles basados en la arquitectura BDI capturaron
+exitosamente las respuestas conductuales heterog\'eneas ante est\'imulos econ\'omicos
+disuasorios, superando las limitaciones de los enfoques promediados; el mecanismo
+deliberativo oper\'o de forma consistente en ambos escenarios. Atendiendo al \textbf{tercer
+objetivo}, la comparaci\'on sistem\'atica determin\'o que la zona de cobro disminuy\'o el
+tr\'afico de paso interno en hora pico ($-17.2$\,\%) e increment\'o significativamente la
+demanda del Metro ($+45$\,\%, $p=0.004$), con el agente gestor ejerciendo plenamente su
+rango din\'amico hasta el techo tarifario; pero \textbf{no alcanz\'o el umbral de
+reducci\'on del 20\,\%} y gener\'o una externalidad de desplazamiento perif\'erico
+($+52.7$\,\%) y una concentraci\'on temporal del uso del Metro que deterior\'o la equidad
+modal en el promedio diario.
+
+En consecuencia, bajo los par\'ametros evaluados, el modelo no respald\'o la hip\'otesis
+principal: el peaje propuesto produjo beneficios moderados con efectos colaterales
+relevantes. Este hallazgo, lejos de invalidar el instrumento, demostr\'o su utilidad como
+herramienta predictiva de soporte a la decisi\'on para el Plan Maestro de Movilidad del
+Municipio de Quito, capaz de anticipar que la medida ---tal como est\'a dise\~nada---
+rendir\'ia poco. Como \textbf{trabajo futuro} se plante\'o: (i)~elevar el techo tarifario
+del gestor por encima de los \$3.00 actuales hacia el rango \$3--6 USD y revisar la
+exoneraci\'on de motos ---que concentran parte del flujo disuasible--- reejecutando EB;
+(ii)~revisar la distribuci\'on de disposici\'on a pagar y los umbrales de congesti\'on por
+NSE; (iii)~incorporar mecanismos de mitigaci\'on de equidad (exenciones por estrato
+socioecon\'omico); (iv)~calibrar el modelo con aforos reales y externalidades ambientales;
+y (v)~extender el an\'alisis a los escenarios de peaje fijo 24\,h y tarifa din\'amica en
+tiempo real.
+
+% =====================================================================
+%  BIBLIOGRAFIA  (numeracion [1]-[11], en el orden de PAPER.md)
+% =====================================================================
+\begin{thebibliography}{11}
+\small
+
+\bibitem{magtToll2024}
+``MAGT-toll: A multi-agent reinforcement learning approach to dynamic traffic
+congestion pricing,'' \textit{PLOS ONE}, vol.~19, no.~11, Nov.~2024,
+doi:~10.1371/journal.pone.0313828. (Q1)
+
+\bibitem{gama2023}
+``Controlling Traffic Congestion in Urbanised City: A Framework Using Agent-Based
+Modelling and Simulation Approach,'' \textit{ISPRS Int. J. Geo-Inf.}, vol.~12, no.~6,
+p.~226, 2023, doi:~10.3390/ijgi12060226. (Q2)
+
+\bibitem{kaddoura2019}
+I.~Kaddoura and K.~Nagel, ``Congestion pricing in a real-world oriented agent-based
+simulation context,'' \textit{Research in Transportation Economics}, vol.~74, pp.~40--51,
+2019. (Q1/Q2)
+
+\bibitem{etrr2023}
+``Agent-based models in urban transportation: review, challenges, and opportunities,''
+\textit{European Transport Research Review}, vol.~15, 2023,
+doi:~10.1186/s12544-023-00590-5. (Q1)
+
+\bibitem{london2020}
+``The Cost of Traffic: Evidence from the London Congestion Charge,''
+\textit{Journal of Urban Economics}, vol.~115, pp.~103--118, 2020. (Q1)
+
+\bibitem{london2024}
+``The city-wide effects of tolling downtown drivers: Evidence from London's congestion
+charge,'' \textit{Journal of Urban Economics}, vol.~140, p.~103636, 2024,
+doi:~10.1016/j.jue.2024.103636. (Q1)
+
+\bibitem{atmos2012}
+``The impact of the London congestion charging scheme on air quality,''
+\textit{Atmospheric Environment}, 2012. (Q1)
+
+\bibitem{metro2025}
+Empresa P\'ublica Metropolitana Metro de Quito (EPMMQ),
+``Bolet\'in Estad\'istico Operacional \#2,'' Quito, Ecuador, Tech. Rep., Feb.~2025.
+
+\bibitem{gomez2013}
+N.~G\'omez-Cruz, \textit{Vida artificial: Ciencia e ingenier\'ia de sistemas complejos}.
+Quito, Ecuador: Editorial Universidad Central, 2013.
+
+\bibitem{inec2023}
+Instituto Nacional de Estad\'istica y Censos (INEC),
+``Anuario de Estad\'isticas de Transporte,'' Quito, Ecuador, Tech. Rep., 2023.
+
+\bibitem{raoGeorgeff1995}
+M.~P. Georgeff and A.~S. Rao,
+``BDI agents: From theory to practice,''
+in \textit{Proc. 1st Int. Conf. Multi-Agent Systems (ICMAS)}, San Francisco, CA, USA,
+1995, pp.~312--319.
+
+\end{thebibliography}
+
+\end{document}
