@@ -2,8 +2,10 @@
 %  Universidad Central del Ecuador  -  Sistemas Colaborativos
 %  Simulacion Multiagente - Zona de Cobro por Congestion (La Carolina)
 %  Plantilla a dos columnas, limpia y profesional.
-%  Compilar 2 veces (o con latexmk) para resolver referencias cruzadas:
-%     latexmk -pdf main.tex      o      pdflatex main && pdflatex main
+%  Compilar con latexmk (recomendado) o manualmente para resolver
+%  referencias cruzadas y la bibliografia (BibTeX, ver references.bib):
+%     latexmk -pdf main.tex
+%     o bien: pdflatex main && bibtex main && pdflatex main && pdflatex main
 %  Requiere la carpeta images/ junto a este archivo con las 9 figuras:
 %     fig1_mapa_poligono, fig02_entorno_gama_eb, fig3_flujo_vehicular,
 %     fig4_velocidad_media, fig5_decisiones_bdi, fig6_modal_shift,
@@ -674,62 +676,11 @@ y (v)~extender el an\'alisis a los escenarios de peaje fijo 24\,h y tarifa din\'
 tiempo real.
 
 % =====================================================================
-%  BIBLIOGRAFIA  (numeracion [1]-[11], en el orden de PAPER.md)
+%  BIBLIOGRAFIA  (BibTeX: ver references.bib)
+%  Compilar con: pdflatex main -> bibtex main -> pdflatex main -> pdflatex main
 % =====================================================================
-\begin{thebibliography}{11}
+\bibliographystyle{ieeetr}
 \small
-
-\bibitem{magtToll2024}
-``MAGT-toll: A multi-agent reinforcement learning approach to dynamic traffic
-congestion pricing,'' \textit{PLOS ONE}, vol.~19, no.~11, Nov.~2024,
-doi:~10.1371/journal.pone.0313828. (Q1)
-
-\bibitem{gama2023}
-``Controlling Traffic Congestion in Urbanised City: A Framework Using Agent-Based
-Modelling and Simulation Approach,'' \textit{ISPRS Int. J. Geo-Inf.}, vol.~12, no.~6,
-p.~226, 2023, doi:~10.3390/ijgi12060226. (Q2)
-
-\bibitem{kaddoura2019}
-I.~Kaddoura and K.~Nagel, ``Congestion pricing in a real-world oriented agent-based
-simulation context,'' \textit{Research in Transportation Economics}, vol.~74, pp.~40--51,
-2019. (Q1/Q2)
-
-\bibitem{etrr2023}
-``Agent-based models in urban transportation: review, challenges, and opportunities,''
-\textit{European Transport Research Review}, vol.~15, 2023,
-doi:~10.1186/s12544-023-00590-5. (Q1)
-
-\bibitem{london2020}
-``The Cost of Traffic: Evidence from the London Congestion Charge,''
-\textit{Journal of Urban Economics}, vol.~115, pp.~103--118, 2020. (Q1)
-
-\bibitem{london2024}
-``The city-wide effects of tolling downtown drivers: Evidence from London's congestion
-charge,'' \textit{Journal of Urban Economics}, vol.~140, p.~103636, 2024,
-doi:~10.1016/j.jue.2024.103636. (Q1)
-
-\bibitem{atmos2012}
-``The impact of the London congestion charging scheme on air quality,''
-\textit{Atmospheric Environment}, 2012. (Q1)
-
-\bibitem{metro2025}
-Empresa P\'ublica Metropolitana Metro de Quito (EPMMQ),
-``Bolet\'in Estad\'istico Operacional \#2,'' Quito, Ecuador, Tech. Rep., Feb.~2025.
-
-\bibitem{gomez2013}
-N.~G\'omez-Cruz, \textit{Vida artificial: Ciencia e ingenier\'ia de sistemas complejos}.
-Quito, Ecuador: Editorial Universidad Central, 2013.
-
-\bibitem{inec2023}
-Instituto Nacional de Estad\'istica y Censos (INEC),
-``Anuario de Estad\'isticas de Transporte,'' Quito, Ecuador, Tech. Rep., 2023.
-
-\bibitem{raoGeorgeff1995}
-M.~P. Georgeff and A.~S. Rao,
-``BDI agents: From theory to practice,''
-in \textit{Proc. 1st Int. Conf. Multi-Agent Systems (ICMAS)}, San Francisco, CA, USA,
-1995, pp.~312--319.
-
-\end{thebibliography}
+\bibliography{references}
 
 \end{document}
